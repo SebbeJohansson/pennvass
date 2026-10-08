@@ -6,6 +6,7 @@
 //   UPSTREAM=http://127.0.0.1:8797 PORT=8791 node dev/serve.mjs
 //
 // /plain is the same page without the shim, for a browser with the real extension loaded.
+// /compare puts fake-grammarly and Grammarly side by side, each turned off in the other's fields.
 
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
@@ -16,6 +17,7 @@ const UPSTREAM = process.env.UPSTREAM ?? 'http://127.0.0.1:8787'
 const here = import.meta.dirname
 const FILES = {
   '/': [join(here, 'harness.html'), 'text/html'],
+  '/compare': [join(here, 'compare.html'), 'text/html'],
   '/shim.js': [join(here, 'shim.js'), 'text/javascript'],
   '/content.js': [join(here, '../extension/content.js'), 'text/javascript'],
 }

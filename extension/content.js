@@ -1,4 +1,4 @@
-// fake-grammarly's page side: finds the textbox you are typing in, asks
+// Pennvass's page side: finds the textbox you are typing in, asks
 // my-agent about its text, draws underlines over it, and applies a fix when
 // you pick one.
 //
@@ -9,10 +9,10 @@
 // ordinary input event, and Ctrl+Z undoes it.
 
 (() => {
-  if (window.__fakeGrammarly) {
+  if (window.__pennvass) {
     return
   }
-  window.__fakeGrammarly = true
+  window.__pennvass = true
 
   const CHECK_DELAY = 600
   const AI_DELAY = 2000
@@ -57,7 +57,7 @@
 
   // ------------------------------------------------------------ the UI host
 
-  const host = document.createElement('fake-grammarly')
+  const host = document.createElement('pennvass-ui')
   host.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;z-index:2147483647;pointer-events:none;'
   const shadow = host.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `<style>
@@ -159,7 +159,7 @@
     if (skip) {
       if (!told.has(el)) {
         told.add(el)
-        console.debug(`[fake-grammarly] skipping this field: ${skip}`, el)
+        console.debug(`[pennvass] skipping this field: ${skip}`, el)
       }
       return null
     }
@@ -177,8 +177,8 @@
    * a field and compare this alone.
    */
   function skipReason(el) {
-    if (el.closest('[data-fake-grammarly="off"]')) {
-      return 'data-fake-grammarly="off"'
+    if (el.closest('[data-pennvass="off"]')) {
+      return 'data-pennvass="off"'
     }
     if (el.readOnly || el.disabled) {
       return 'read-only or disabled'
@@ -648,7 +648,7 @@
     const busy = field.checking || field.aiBusy
     badge.className = `ui badge${field.offline ? ' offline' : busy ? ' busy' : count ? ' issues' : ''}`
     badge.textContent = field.offline ? '!' : busy && !count ? '…' : count ? String(count) : '✓'
-    badge.title = field.offline ? 'fake-grammarly: my-agent is not running on 127.0.0.1:8787' : `fake-grammarly: ${count} suggestion${count === 1 ? '' : 's'}`
+    badge.title = field.offline ? 'Pennvass: my-agent is not running on 127.0.0.1:8787' : `Pennvass: ${count} suggestion${count === 1 ? '' : 's'}`
     const size = badge.getBoundingClientRect()
     const right = Math.min(box.right, innerWidth)
     const bottom = Math.min(box.bottom, innerHeight)
@@ -811,7 +811,7 @@
     const selection = selectionIn(field)
     showCard(anchor, (box) => {
       const head = el('div', 'row')
-      head.append(el('strong', '', 'fake-grammarly'))
+      head.append(el('strong', '', 'Pennvass'))
       if (field.tone) {
         const share = Math.round((field.tone.probabilities[field.tone.tone] ?? 0) * 100)
         const tone = el('span', 'muted', `${TONE_LABEL[field.tone.tone]} ${share}%`)

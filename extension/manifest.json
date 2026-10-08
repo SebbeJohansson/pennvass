@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "fake-grammarly",
+  "name": "Pennvass",
   "version": "0.2.0",
   "description": "Spelling, grammar, clarity and tone from my-agent on this machine: LanguageTool, Ollama, Laya and Claude.",
   "permissions": ["storage"],
@@ -15,5 +15,5 @@
       "match_about_blank": true
     }
   ],
-  "action": { "default_popup": "popup.html", "default_title": "fake-grammarly" }
+  "action": { "default_popup": "popup.html", "default_title": "Pennvass" }
 }

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>fake-grammarly vs Grammarly</title>
+<title>Pennvass vs Grammarly</title>
 <style>
   body { font: 15px/1.5 system-ui, sans-serif; margin: 20px auto; padding: 0 16px; max-width: 1200px; }
   h1 { font-size: 18px; margin: 0 0 12px; }
@@ -23,9 +23,9 @@
 </style>
 </head>
 <body>
-  <h1>fake-grammarly vs Grammarly</h1>
+  <h1>Pennvass vs Grammarly</h1>
   <div class="source">
-    <textarea id="source" data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false" data-fake-grammarly="off"
+    <textarea id="source" data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false" data-pennvass="off"
       placeholder="Type or paste text here, then Copy to both"></textarea>
     <div>
       <select id="samples"></select><br><br>
@@ -35,20 +35,20 @@
 
   <div class="cols">
     <section>
-      <h2>fake-grammarly only</h2>
+      <h2>Pennvass only</h2>
       <div class="label">textarea</div>
       <textarea class="mine" data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false"></textarea>
       <div class="label">contenteditable</div>
       <div class="mine" contenteditable="true" data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false"></div>
-      <h2>What fake-grammarly found <span class="muted" id="status"></span></h2>
+      <h2>What Pennvass found <span class="muted" id="status"></span></h2>
       <table><thead><tr><th>Kind</th><th>Text</th><th>Suggestion</th><th>Why</th></tr></thead><tbody id="found"></tbody></table>
     </section>
     <section>
       <h2>Grammarly only</h2>
       <div class="label">textarea</div>
-      <textarea class="theirs" data-fake-grammarly="off"></textarea>
+      <textarea class="theirs" data-pennvass="off"></textarea>
       <div class="label">contenteditable</div>
-      <div class="theirs" contenteditable="true" data-fake-grammarly="off"></div>
+      <div class="theirs" contenteditable="true" data-pennvass="off"></div>
       <p class="muted">Grammarly's findings show in its own underlines and badge. Open its card or sidebar to read them.</p>
     </section>
   </div>

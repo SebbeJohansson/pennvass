@@ -1,4 +1,6 @@
-# fake-grammarly
+# Pennvass
+
+*Pennvass*: Swedish for sharp with the pen.
 
 A Chrome extension that underlines spelling, grammar and unclear sentences in
 any textbox, and rewrites a selection on request. Everything runs on this
@@ -29,7 +31,7 @@ clearer, shorter, more formal, friendlier, more confident, or in English or Swed
 
 1. In `~/projects/my-agent`: `docker compose up -d --build`. That starts
    LanguageTool next to the agent. `LAYA_KEY` in its `.env` turns tone on.
-2. `./scripts/install-windows.sh` copies the extension to `C:\Users\<you>\fake-grammarly`.
+2. `./scripts/install-windows.sh` copies the extension to `C:\Users\<you>\pennvass`.
 3. In Chrome, open `chrome://extensions`, turn on **Developer mode**, click
    **Load unpacked**, and pick that folder.
 
@@ -41,7 +43,7 @@ After a change, run step 2 again and click the reload arrow on the extension's c
   LanguageTool, Laya and Ollama, all on this machine.
 - Only a **rewrite** leaves the machine: it goes to Claude, and only when you click one.
 - Skipped: password and other non-text inputs, `spellcheck="false"` fields (code
-  editors), and anything marked `data-fake-grammarly="off"`. The popup turns it off per site.
+  editors), and anything marked `data-pennvass="off"`. The popup turns it off per site.
 - Next to Grammarly, the underlines sit 3 px lower so both show, and in a
   single-line field the badge moves left of Grammarly's. `/compare` on the test page puts them side by side.
 

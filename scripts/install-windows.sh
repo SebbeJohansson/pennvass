@@ -5,7 +5,7 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 profile="$(wslpath "$(cmd.exe /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r')")"
-target="${1:-$profile/fake-grammarly}"
+target="${1:-$profile/pennvass}"
 mkdir -p "$target"
 rm -rf "${target:?}"/*
 cp -r "$here/extension/." "$target/"

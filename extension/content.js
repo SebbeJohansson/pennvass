@@ -1,5 +1,5 @@
 // Pennvass's page side: finds the textbox you are typing in, asks
-// my-agent about its text, draws underlines over it, and applies a fix when
+// the backend about its text, draws underlines over it, and applies a fix when
 // you pick one.
 //
 // Nothing is drawn inside the page's own DOM. One host element holds a closed
@@ -436,7 +436,7 @@
     field.checking = false
     field.offline = !result.ok && !!result.offline
     field.error = result.ok ? '' : result.error
-    // my-agent restarting (a rebuild takes a few seconds) should not leave the badge
+    // The backend restarting (a rebuild takes a few seconds) should not leave the badge
     // grey until you type again: try again in 5 s while this field is focused.
     if (field.offline) {
       clearTimeout(field.checkTimer)
@@ -656,7 +656,7 @@
     const busy = field.checking || field.aiBusy
     badge.className = `ui badge${field.offline ? ' offline' : busy ? ' busy' : count ? ' issues' : ''}`
     badge.textContent = field.offline ? '!' : busy && !count ? '…' : count ? String(count) : '✓'
-    badge.title = field.offline ? 'Pennvass: my-agent is not running on 127.0.0.1:8787' : `Pennvass: ${count} suggestion${count === 1 ? '' : 's'}`
+    badge.title = field.offline ? 'Pennvass: the backend is not running on 127.0.0.1:8787' : `Pennvass: ${count} suggestion${count === 1 ? '' : 's'}`
     const size = badge.getBoundingClientRect()
     const right = Math.min(box.right, innerWidth)
     const bottom = Math.min(box.bottom, innerHeight)
@@ -828,7 +828,7 @@
       }
       box.appendChild(head)
       const status = field.offline
-        ? 'my-agent is not running. Start it: docker compose up -d in ~/projects/my-agent'
+        ? 'The backend is not running on 127.0.0.1:8787.'
         : field.error
           ? field.error
           : field.aiBusy

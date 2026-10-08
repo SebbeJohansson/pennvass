@@ -1,5 +1,5 @@
-// Every request to my-agent goes through here. A content script runs with the
-// page's origin, so its own fetch to 127.0.0.1 would need CORS that my-agent
+// Every request to the backend goes through here. A content script runs with the
+// page's origin, so its own fetch to 127.0.0.1 would need CORS that the backend
 // deliberately never answers; the service worker has host_permissions instead.
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:8787'
@@ -37,10 +37,10 @@ async function write(route, body) {
     })
   }
   catch {
-    return { ok: false, offline: true, error: 'my-agent is not running' }
+    return { ok: false, offline: true, error: 'the backend is not running' }
   }
   const data = await response.json().catch(() => ({}))
-  return response.ok ? { ok: true, data } : { ok: false, error: data.error ?? `my-agent answered ${response.status}` }
+  return response.ok ? { ok: true, data } : { ok: false, error: data.error ?? `the backend answered ${response.status}` }
 }
 
 async function health() {

@@ -51,7 +51,7 @@ async function main() {
 async function checkHealth() {
   const { ok } = await chrome.runtime.sendMessage({ type: 'health' })
   document.getElementById('dot').className = `dot ${ok ? 'ok' : 'bad'}`
-  document.getElementById('status').textContent = ok ? 'my-agent is running' : 'my-agent is not running'
+  document.getElementById('status').textContent = ok ? 'The backend is running' : 'The backend is not running'
 }
 
 main()

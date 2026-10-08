@@ -103,7 +103,7 @@ async function list(text) {
     status.textContent = `${rows.length} found in ${((performance.now() - started) / 1000).toFixed(1)} s, ${check.language}${tone ? `, tone ${tone.tone} ${Math.round(tone.probabilities[tone.tone] * 100)}%` : ''}`
   }
   catch (error) {
-    status.textContent = `my-agent: ${error.message}`
+    status.textContent = `backend: ${error.message}`
   }
 }
 

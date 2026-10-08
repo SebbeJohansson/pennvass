@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Pennvass",
   "version": "0.2.0",
-  "description": "Spelling, grammar, clarity and tone from my-agent on this machine: LanguageTool, Ollama, Laya and Claude.",
+  "description": "Spelling, grammar, clarity and tone from language tools and models on your own machine.",
   "permissions": ["storage"],
   "host_permissions": ["http://127.0.0.1:8787/*", "http://localhost:8787/*"],
   "background": { "service_worker": "background.js" },

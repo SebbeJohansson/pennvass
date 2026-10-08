@@ -1,70 +1,145 @@
 # Pennvass
 
-*Pennvass*: Swedish for sharp with the pen.
+*Pennvass*: Swedish for "sharp with the pen".
 
-A Chrome extension that underlines spelling, grammar and unclear sentences in
-any textbox, and rewrites a selection on request. Everything runs on this
-machine through [my-agent](../my-agent), except the Claude rewrite.
+A Chrome extension for spelling, grammar and clearer writing in any textbox,
+backed by language tools and models running on your own machine. It
+underlines mistakes as you type, suggests clearer versions of wordy sentences,
+reads the tone of what you wrote, and can have Claude rewrite a selection on
+request.
+
+It is a personal stand-in for a paid writing assistant. The extension does
+not check anything itself: it sends the text to a backend on `127.0.0.1` and
+draws what comes back.
 
 ```
-Chrome (Windows) ── content.js: watches the textbox, draws underlines and cards
-                 └─ background.js ──POST──▶ my-agent 127.0.0.1:8787 /v1/write/*
-                                               ├─▶ LanguageTool :8010  check     ~100 ms
-                                               ├─▶ Laya         :8000  tone      ~0.3 s
-                                               ├─▶ Ollama       :11434 improve   1.5–6 s per sentence
-                                               └─▶ runner       :8788  rewrite   5–30 s, Claude
+Chrome ── content.js: finds the focused textbox, draws underlines, cards and a badge
+       └─ background.js ──POST──▶ backend on 127.0.0.1:8787 /v1/write/*
+                                    ├─ check    spelling and grammar   e.g. LanguageTool, ~100 ms
+                                    ├─ improve  clearer sentences      e.g. a local LLM via Ollama, 2–8 s per sentence
+                                    ├─ tone     tone of the whole text e.g. a local classifier
+                                    └─ rewrite  rewrite on request     e.g. Claude, 5–30 s
 ```
 
-| Underline | Meaning | From |
-|---|---|---|
-| red | spelling | LanguageTool |
-| orange | grammar | LanguageTool |
-| purple | style | LanguageTool |
-| blue dashed, under the sentence | a clearer version of the sentence | qwen2.5:7b |
+## What you see
 
-The badge in the field's bottom-left corner (at the end of the line in a
-single-line field) shows the count. Click it to see the
-tone (Laya), or to have Claude rewrite the selection (or the whole text) to be
-clearer, shorter, more formal, friendlier, more confident, or in English or Swedish.
+| Underline | Meaning |
+|---|---|
+| red | spelling |
+| orange | grammar |
+| purple | style |
+| light blue, under a whole sentence | a clearer version of the sentence is available |
+
+- **Click an underline** for a card with the fix. A sentence rewrite shows a
+  word-by-word diff before you apply it. Fixes are typed in with
+  `execCommand('insertText')`, so the site sees normal input and Ctrl+Z undoes them.
+- **The badge** (bottom-left of the field) shows the count. Click it for the
+  list of suggestions, the tone, and rewrite buttons: clearer, shorter, more
+  formal, friendlier, more confident, in English, in Swedish.
+- **The popup** turns Pennvass off per site, and turns the clarity and tone
+  checks on or off.
+- **Next to Grammarly** both can run: Pennvass's underlines sit a few pixels lower.
 
 ## Install
 
-1. In `~/projects/my-agent`: `docker compose up -d --build`. That starts
-   LanguageTool next to the agent. `LAYA_KEY` in its `.env` turns tone on.
-2. `./scripts/install-windows.sh` copies the extension to `C:\Users\<you>\pennvass`.
-3. In Chrome, open `chrome://extensions`, turn on **Developer mode**, click
-   **Load unpacked**, and pick that folder.
+1. Run a backend that implements the [API](#backend-api) on `127.0.0.1:8787`.
+2. In Chrome, open `chrome://extensions` and turn on **Developer mode**.
+3. Click **Load unpacked** and pick the `extension/` folder.
 
-After a change, run step 2 again and click the reload arrow on the extension's card.
+On WSL, Chrome on Windows loads unpacked extensions unreliably from `\\wsl$`.
+`./scripts/install-windows.sh` copies `extension/` to `%USERPROFILE%\pennvass`
+and stamps the copy with its commit, shown on the extension's card. Load that
+folder instead, and run the script again after each change.
 
-## What it reads, and where it goes
+## Backend API
 
-- The text of the focused textbox goes to my-agent on loopback, and from there to
-  LanguageTool, Laya and Ollama, all on this machine.
-- Only a **rewrite** leaves the machine: it goes to Claude, and only when you click one.
-- Skipped: password and other non-text inputs, `spellcheck="false"` fields (code
-  editors), and anything marked `data-pennvass="off"`. The popup turns it off per site.
-- Next to Grammarly, the underlines sit 3 px lower so both show, and in a
-  single-line field the badge moves left of Grammarly's. `/compare` on the test page puts them side by side.
+Four `POST` routes, JSON in and out. Only `check` is required: if the others
+fail, their part of the UI stays empty.
+
+| Route | Request | Response |
+|---|---|---|
+| `/v1/write/check` | `{ text }` | `{ language, issues: Issue[] }` |
+| `/v1/write/improve` | `{ text }` | `{ issues: Issue[], pending }` |
+| `/v1/write/tone` | `{ text }` | `{ tone, probabilities }` |
+| `/v1/write/rewrite` | `{ text, style }` | `{ text }` |
+
+```ts
+interface Issue {
+  offset: number          // UTF-16 code units into `text`, as JavaScript counts
+  length: number
+  message: string         // shown in the card
+  replacements: string[]  // the first is the one-click fix
+  kind: 'spelling' | 'grammar' | 'style' | 'clarity'
+  source: string
+}
+```
+
+- `text` is at most 20,000 characters.
+- **improve** may read only part of the text per call. It returns the number of
+  sentences it has not read yet as `pending`, and the extension calls again
+  until `pending` is 0. Cache by sentence, since the same text arrives on every pause.
+- **tone** returns one of `formal`, `friendly`, `casual`, `confident`,
+  `frustrated`, plus a probability for each.
+- **rewrite** `style` is one of `clearer`, `shorter`, `formal`, `friendly`,
+  `confident`, `english`, `swedish`.
+- `GET /health` answering 200 lights up the popup's status dot.
+
+Errors are `{ error }` with a 4xx or 5xx status, and the message is shown in the badge menu.
+
+### What the backend must refuse
+
+A web page can send requests to `127.0.0.1` as well, so the backend must accept
+only this extension:
+
+- **Refuse any `POST` that is not `content-type: application/json`.** A page can
+  only send that cross-origin after a CORS preflight. Never answer the preflight.
+- **Refuse a `Host` header that is not `127.0.0.1`, `localhost` or `[::1]`.**
+  That stops DNS rebinding.
+- **Listen on loopback only.**
+- **Give `rewrite` no tools.** Its text comes from web pages and can carry
+  instructions. With Claude Code, start it with `--tools "" --strict-mcp-config`,
+  so it has neither built-in tools nor MCP servers.
+
+## Privacy
+
+- **Text that is sent:** the text of the field you are typing in, to the backend
+  on your machine.
+- **Never read:** password fields, other non-text inputs, read-only fields, and
+  code editors (CodeMirror, Monaco, Ace, and `spellcheck="false"` fields when
+  Grammarly is not on the page).
+- **Opting a field out:** a page can add `data-pennvass="off"` to a field.
+- **Where a rewrite goes:** to whatever model the backend uses, and only when
+  you click one. With a hosted model like Claude, that means the selected text
+  leaves your machine.
+- **What the extension stores:** your settings, in `chrome.storage.local`.
+
+## Security
+
+- `background.js` only calls a loopback address, and only the four routes
+  above. The popup refuses any other address.
+- The UI lives in a closed shadow root, so page scripts cannot reach it.
+  Applying a fix or starting a rewrite needs a real click; one a page script
+  fakes is ignored.
+- `dev/serve.mjs` (below) applies the same refusals as the backend before
+  proxying, so running it does not open the backend to other sites.
 
 ## Limits
 
 - **Google Docs** draws its text on a canvas, so no extension can underline it.
-- **Swedish** is weak: LanguageTool's Swedish rules are thin, and qwen2.5:7b
-  passed "se dem" (for "se den") and "jätte kul" in testing.
-- **Laya only reads tone.** Untrained, it could not tell a bad sentence from a
-  good one, so qwen2.5:7b reads every sentence of 6+ words, at most 3 new
-  sentences per request. Results are cached by sentence, so retyping elsewhere
-  costs nothing.
-- Sites with heavy custom editors (Teams, Slack) may underline correctly but not
-  accept a fix, depending on how they handle `execCommand('insertText')`.
+- **Custom editors** (Teams, Slack and the like) may show underlines correctly
+  but not accept a fix, depending on how they handle `execCommand('insertText')`.
+- **Quality depends on the backend.** With LanguageTool and qwen2.5:7b, English
+  is good. Swedish relies mostly on the LLM, because LanguageTool's Swedish rules are thin.
 
 ## Developing
 
-`dev/serve.mjs` serves a test page with a textarea, an input and two
-contenteditables, and proxies `/v1/write/*` to my-agent:
+`dev/serve.mjs` serves test pages and proxies `/v1/write/*` to the backend.
 
 ```sh
-node dev/serve.mjs                 # http://127.0.0.1:8790 runs content.js under a stand-in `chrome`
-                                   # http://127.0.0.1:8790/plain is the bare page, for the real extension
+node dev/serve.mjs   # UPSTREAM=http://127.0.0.1:8787 PORT=8790 by default
 ```
+
+- `http://127.0.0.1:8790/` runs `content.js` under a stand-in `chrome`, with no extension needed.
+- `/plain` is the same page without it, for testing the real extension.
+- `/compare` puts Pennvass and Grammarly side by side, each turned off in the
+  other's fields, and lists everything Pennvass found.

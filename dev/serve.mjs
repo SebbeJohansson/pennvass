@@ -1,8 +1,8 @@
 // A test page for the content script without installing the extension: it
 // loads extension/content.js under a stand-in `chrome` (shim.js) and proxies
-// /v1/write/* to my-agent, so the page talks to it same-origin.
+// /v1/write/* to the backend, so the page talks to it same-origin.
 //
-//   node dev/serve.mjs            → http://127.0.0.1:8790, my-agent at 127.0.0.1:8787
+//   node dev/serve.mjs            → http://127.0.0.1:8790, backend at 127.0.0.1:8787
 //   UPSTREAM=http://127.0.0.1:8797 PORT=8791 node dev/serve.mjs
 //
 // /plain is the same page without the shim, for a browser with the real extension loaded.
@@ -25,8 +25,8 @@ const FILES = {
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]'])
 
 /**
- * my-agent's own checks (its guard.ts), repeated here: this proxy sends every
- * body on as JSON, so without them any web page could reach my-agent through
+ * The backend's own checks (see the README), repeated here: this proxy sends every
+ * body on as JSON, so without them any web page could reach the backend through
  * it with a plain form post, and /v1/write/rewrite starts a Claude agent.
  */
 function refusal(request) {
@@ -58,7 +58,7 @@ createServer(async (request, response) => {
       response.writeHead(upstream.status, { 'content-type': 'application/json' }).end(await upstream.text())
     }
     catch {
-      response.writeHead(502, { 'content-type': 'application/json' }).end('{"error":"my-agent is not running"}')
+      response.writeHead(502, { 'content-type': 'application/json' }).end('{"error":"the backend is not running"}')
     }
     return
   }
@@ -74,4 +74,4 @@ createServer(async (request, response) => {
     return
   }
   response.writeHead(200, { 'content-type': file[1], 'cache-control': 'no-store' }).end(await readFile(file[0]))
-}).listen(PORT, '127.0.0.1', () => console.log(`harness on http://127.0.0.1:${PORT}, my-agent at ${UPSTREAM}`))
+}).listen(PORT, '127.0.0.1', () => console.log(`harness on http://127.0.0.1:${PORT}, backend at ${UPSTREAM}`))

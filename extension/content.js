@@ -135,8 +135,9 @@
         el = el.parentElement
       }
     }
-    // The same opt-outs Grammarly honours, plus code editors that turn spellcheck off.
-    if (el.closest('[data-gramm="false"], [data-enable-grammarly="false"], [data-fake-grammarly="off"]')
+    // Code editors turn spellcheck off. Grammarly's own opt-outs (data-gramm="false") are not
+    // honoured, so a page can turn Grammarly off in a field and compare this alone.
+    if (el.closest('[data-fake-grammarly="off"]')
       || el.getAttribute('spellcheck') === 'false' || el.readOnly || el.disabled) {
       return null
     }
@@ -482,6 +483,17 @@
     render()
   }
 
+  /**
+   * Grammarly running on the same page puts its badge in the bottom-right
+   * corner and its underlines at the baseline, exactly where ours go. When it
+   * is there, ours move: badge to the bottom-left, underlines a little lower.
+   */
+  function grammarlyHere(field) {
+    return !!document.querySelector('grammarly-extension, grammarly-desktop-integration')
+      || document.body?.hasAttribute('data-gr-ext-installed')
+      || field.el.hasAttribute('data-gramm')
+  }
+
   function render() {
     cancelAnimationFrame(frame)
     frame = requestAnimationFrame(draw)
@@ -499,12 +511,13 @@
     if (!box.width || !box.height) {
       return
     }
+    const shared = grammarlyHere(field)
     // Underlines scrolled out of the field are not drawn.
     const clip = { left: box.left, right: box.right, top: box.top, bottom: box.bottom + 2 }
     for (const issue of visibleIssues(field)) {
       for (const rect of issueRects(field, issue)) {
         // Clarity sits a little lower, so a spelling line in the same sentence stays visible.
-        const top = rect.bottom - 1 + (issue.kind === 'clarity' ? 3 : 0)
+        const top = rect.bottom - 1 + (issue.kind === 'clarity' ? 3 : 0) + (shared ? 3 : 0)
         if (top < clip.top || top > clip.bottom || rect.right < clip.left || rect.left > clip.right) {
           continue
         }
@@ -517,10 +530,10 @@
         drawn.push({ issue, rect })
       }
     }
-    drawBadge(field, box)
+    drawBadge(field, box, shared)
   }
 
-  function drawBadge(field, box) {
+  function drawBadge(field, box, shared) {
     let badge = uiLayer.querySelector('.badge')
     if (!badge) {
       badge = document.createElement('button')
@@ -534,7 +547,9 @@
     badge.textContent = field.offline ? '!' : busy && !count ? '…' : count ? String(count) : '✓'
     badge.title = field.offline ? 'fake-grammarly: my-agent is not running on 127.0.0.1:8787' : `fake-grammarly: ${count} suggestion${count === 1 ? '' : 's'}`
     const size = badge.getBoundingClientRect()
-    badge.style.left = `${Math.min(box.right, innerWidth) - size.width - 6}px`
+    badge.style.left = shared
+      ? `${Math.max(box.left, 0) + 6}px`
+      : `${Math.min(box.right, innerWidth) - size.width - 6}px`
     badge.style.top = `${Math.min(box.bottom, innerHeight) - size.height - 6}px`
   }
 

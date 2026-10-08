@@ -95,6 +95,17 @@
     button.style:hover { background: #f0f0f3; }
     .result { white-space: pre-wrap; max-height: 260px; overflow: auto; background: #f9f9fb; border-radius: 6px; padding: 8px; margin: 8px 0; }
     .err { color: #ce2c31; }
+    .list { max-height: 220px; overflow: auto; margin: 8px -4px; }
+    .item { display: flex; align-items: center; border-radius: 6px; }
+    .item:hover { background: #f0f0f3; }
+    button.pick { flex: 1; display: flex; align-items: baseline; gap: 8px; border: none; background: none; padding: 6px 4px;
+      font: inherit; color: inherit; text-align: left; cursor: pointer; min-width: 0; }
+    button.pick .dot { flex: none; transform: translateY(-1px); }
+    .what del { color: #ce2c31; }
+    .what ins { color: #11a36a; text-decoration: none; font-weight: 600; }
+    button.x { border: none; background: none; color: #8b8d98; font-size: 16px; cursor: pointer; padding: 2px 8px; visibility: hidden; }
+    .item:hover button.x { visibility: visible; }
+    button.x:hover { color: inherit; }
     @media (prefers-color-scheme: dark) {
       .ui { color: #edeef0; }
       .card { background: #212225; box-shadow: 0 6px 24px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.08); }
@@ -106,6 +117,9 @@
       .diff del { color: #ff9592; }
       .diff ins { color: #3dd68c; }
       .err { color: #ff9592; }
+      .item:hover { background: #2b2d31; }
+      .what del { color: #ff9592; }
+      .what ins { color: #3dd68c; }
     }
   </style><div id="lines"></div><div id="ui"></div>`
   const linesLayer = shadow.getElementById('lines')
@@ -666,6 +680,47 @@
     return box
   }
 
+  function applyIssue(field, issue, replacement) {
+    return replaceText(field, issue.offset, issue.offset + issue.length, issue.original, replacement)
+  }
+
+  /** One row of the menu's list: what is wrong, and what clicking it does. */
+  function issueRow(field, issue, anchor) {
+    const row = el('div', 'item')
+    const main = el('button', 'pick')
+    const dot = el('span', 'dot')
+    dot.style.background = COLORS[issue.kind]
+    const what = el('span', 'what')
+    if (issue.kind === 'clarity') {
+      what.append(el('b', '', 'Rewrite sentence'), el('span', 'muted', ` · ${issue.message}`))
+      // Too long to apply blind: the row opens the card with its diff.
+      main.addEventListener('click', () => openIssue(issue, anchor))
+    }
+    else {
+      what.append(el('del', '', issue.original), issue.replacements.length ? ' → ' : '', el('ins', '', issue.replacements[0] ?? ''),
+        el('span', 'muted', ` · ${KIND_LABEL[issue.kind]}`))
+      main.title = issue.message
+      main.addEventListener('click', () => {
+        if (!issue.replacements.length) {
+          openIssue(issue, anchor)
+          return
+        }
+        applyIssue(field, issue, issue.replacements[0])
+        openMenu()
+      })
+    }
+    main.append(dot, what)
+    const ignore = el('button', 'x', '×')
+    ignore.title = 'Ignore'
+    ignore.addEventListener('click', () => {
+      field.ignored.add(keyOf(issue))
+      render()
+      openMenu()
+    })
+    row.append(main, ignore)
+    return row
+  }
+
   function openIssue(issue, rect) {
     const field = active
     showCard(rect, (box) => {
@@ -683,7 +738,7 @@
           const button = el('button', 'rep', issue.kind === 'clarity' ? 'Use this sentence' : replacement || '(remove)')
           button.addEventListener('click', () => {
             closeCard()
-            if (!replaceText(field, issue.offset, issue.offset + issue.length, issue.original, replacement)) {
+            if (!applyIssue(field, issue, replacement)) {
               showCard(rect, b => b.append(el('div', 'msg err', 'The text changed under this suggestion. It will be checked again.')))
             }
           })
@@ -726,6 +781,14 @@
             ? `Local AI is reading${field.pending ? ` (${field.pending} sentences left)` : ''}…`
             : `${visibleIssues(field).length} suggestions`
       box.appendChild(el('div', field.offline || field.error ? 'muted err' : 'muted', status))
+      const issues = visibleIssues(field).sort((a, b) => a.offset - b.offset)
+      if (issues.length) {
+        const list = el('div', 'list')
+        for (const issue of issues) {
+          list.appendChild(issueRow(field, issue, anchor))
+        }
+        box.appendChild(list)
+      }
       box.appendChild(el('div', 'muted', selection ? 'Rewrite the selection with Claude:' : 'Rewrite all of it with Claude:'))
       const styles = el('div', 'styles')
       for (const [style, label] of STYLES) {
@@ -801,30 +864,60 @@
     setActive(editableFrom(targetOf(event)))
   }, true)
 
-  // Clicking somewhere that takes no focus fires no focusin; the field is still left.
-  document.addEventListener('focusout', () => setTimeout(() => {
+  /** The editable field that has focus, looking inside shadow roots. */
+  function focusedEditable() {
     let focused = document.activeElement
     while (focused?.shadowRoot?.activeElement) {
       focused = focused.shadowRoot.activeElement
     }
-    if (active && !card && editableFrom(focused) !== active.el) {
+    return editableFrom(focused)
+  }
+
+  // Clicking somewhere that takes no focus fires no focusin; the field is still left.
+  // Switching to another window fires focusout too, but the field keeps focus
+  // for when you come back, so a page without focus changes nothing.
+  document.addEventListener('focusout', () => setTimeout(() => {
+    if (!document.hasFocus()) {
+      return
+    }
+    if (active && !card && focusedEditable() !== active.el) {
       setActive(null)
     }
   }), true)
+
+  addEventListener('focus', () => {
+    const el = focusedEditable()
+    if (el) {
+      setActive(el)
+    }
+  })
 
   document.addEventListener('input', (event) => {
     const el = editableFrom(targetOf(event))
     if (!el || !settings.enabled) {
       return
     }
-    syncText(fieldFor(el))
+    // Typing in the focused field makes it the active one, whatever focus events were missed.
+    if (fieldFor(el) !== active && focusedEditable() === el) {
+      setActive(el)
+    }
+    else {
+      syncText(fieldFor(el))
+    }
   }, true)
 
   // Some pages set a field's text without an input event (a sent message
   // clearing the box, a framework resetting it). Caught within a second.
+  // The same tick heals a lost active field: focus is in one, but nothing is drawn for it.
   setInterval(() => {
     if (active?.el.isConnected) {
       syncText(active)
+    }
+    else if (settings.enabled && document.hasFocus()) {
+      const el = focusedEditable()
+      if (el) {
+        setActive(el)
+      }
     }
   }, 1000)
 

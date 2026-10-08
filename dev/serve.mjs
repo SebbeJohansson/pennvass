@@ -22,9 +22,35 @@ const FILES = {
   '/content.js': [join(here, '../extension/content.js'), 'text/javascript'],
 }
 
+const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]'])
+
+/**
+ * my-agent's own checks (its guard.ts), repeated here: this proxy sends every
+ * body on as JSON, so without them any web page could reach my-agent through
+ * it with a plain form post, and /v1/write/rewrite starts a Claude agent.
+ */
+function refusal(request) {
+  if (!LOOPBACK.has((request.headers.host ?? '').replace(/:\d+$/, ''))) {
+    return 'Host must be localhost'
+  }
+  if (!(request.headers['content-type'] ?? '').startsWith('application/json')) {
+    return 'POST bodies must be sent as application/json'
+  }
+  const origin = request.headers.origin
+  if (origin && origin !== `http://${request.headers.host}`) {
+    return 'cross-origin requests are refused'
+  }
+  return ''
+}
+
 createServer(async (request, response) => {
   const path = (request.url ?? '/').split('?')[0]
   if (request.method === 'POST' && (path.startsWith('/v1/write/') || path === '/health')) {
+    const refused = refusal(request)
+    if (refused) {
+      response.writeHead(403, { 'content-type': 'application/json' }).end(JSON.stringify({ error: refused }))
+      return
+    }
     const chunks = []
     for await (const chunk of request) chunks.push(chunk)
     try {

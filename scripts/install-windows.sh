@@ -7,6 +7,11 @@ here="$(cd "$(dirname "$0")/.." && pwd)"
 profile="$(wslpath "$(cmd.exe /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r')")"
 target="${1:-$profile/pennvass}"
 mkdir -p "$target"
+# The folder is emptied first, so it must be empty already or hold a copy of this extension.
+if [ -n "$(ls -A "$target")" ] && ! grep -q '"name": "Pennvass"' "$target/manifest.json" 2>/dev/null; then
+  echo "Refusing to empty $target: it is not empty and holds no Pennvass manifest." >&2
+  exit 1
+fi
 rm -rf "${target:?}"/*
 cp -r "$here/extension/." "$target/"
 # chrome://extensions shows version_name on the card: proof of which copy is loaded.

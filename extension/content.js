@@ -130,6 +130,14 @@
 
   // Clicks on our UI must not take focus or the selection away from the field.
   shadow.addEventListener('mousedown', event => event.preventDefault())
+  // Only a real click may press our buttons (apply a fix, start a Claude rewrite):
+  // one a page script fakes stops here.
+  shadow.addEventListener('click', (event) => {
+    if (!event.isTrusted) {
+      event.stopImmediatePropagation()
+      event.preventDefault()
+    }
+  }, true)
 
   function mountHost() {
     if (!host.isConnected) {

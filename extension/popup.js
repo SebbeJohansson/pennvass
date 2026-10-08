@@ -28,7 +28,20 @@ async function main() {
   const baseUrl = document.getElementById('baseUrl')
   baseUrl.value = stored.baseUrl
   baseUrl.addEventListener('change', async () => {
-    await chrome.storage.local.set({ baseUrl: baseUrl.value.trim() || DEFAULTS.baseUrl })
+    // background.js only ever calls a loopback address; say so here instead of failing quietly.
+    let url = null
+    try {
+      const parsed = new URL(baseUrl.value.trim() || DEFAULTS.baseUrl)
+      url = parsed.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(parsed.hostname) ? parsed.origin : null
+    }
+    catch {}
+    if (!url) {
+      document.getElementById('status').textContent = 'Only http://127.0.0.1, localhost or [::1] addresses'
+      baseUrl.value = (await chrome.storage.local.get(DEFAULTS)).baseUrl
+      return
+    }
+    baseUrl.value = url
+    await chrome.storage.local.set({ baseUrl: url })
     checkHealth()
   })
 

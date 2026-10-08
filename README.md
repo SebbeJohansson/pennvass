@@ -143,3 +143,7 @@ node dev/serve.mjs   # UPSTREAM=http://127.0.0.1:8787 PORT=8790 by default
 - `/plain` is the same page without it, for testing the real extension.
 - `/compare` puts Pennvass and Grammarly side by side, each turned off in the
   other's fields, and lists everything Pennvass found.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

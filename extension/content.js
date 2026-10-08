@@ -155,15 +155,12 @@
         el = el.parentElement
       }
     }
-    // Grammarly's own opt-outs (data-gramm="false") are not honoured, so a page
-    // can turn Grammarly off in a field and compare this alone.
-    if (el.closest('[data-fake-grammarly="off"]') || el.readOnly || el.disabled) {
-      return null
-    }
-    // Code editors turn spellcheck off. So does Grammarly, on every field it
-    // takes over, which is not an opt-out: a field it has marked, or one taken
-    // before, stays ours.
-    if (el.getAttribute('spellcheck') === 'false' && !accepted.has(el) && !markedByGrammarly(el)) {
+    const skip = skipReason(el)
+    if (skip) {
+      if (!told.has(el)) {
+        told.add(el)
+        console.debug(`[fake-grammarly] skipping this field: ${skip}`, el)
+      }
       return null
     }
     accepted.add(el)
@@ -171,9 +168,41 @@
   }
 
   const accepted = new WeakSet()
+  const told = new WeakSet()
+  const CODE_EDITORS = '.cm-editor, .CodeMirror, .monaco-editor, .ace_editor'
 
-  function markedByGrammarly(el) {
-    return el.getAttributeNames().some(name => name.startsWith('data-gr'))
+  /**
+   * Why a field is left alone, or '' when it is not. Grammarly's own opt-out
+   * (data-gramm="false") is not honoured, so a page can turn Grammarly off in
+   * a field and compare this alone.
+   */
+  function skipReason(el) {
+    if (el.closest('[data-fake-grammarly="off"]')) {
+      return 'data-fake-grammarly="off"'
+    }
+    if (el.readOnly || el.disabled) {
+      return 'read-only or disabled'
+    }
+    if (el.closest(CODE_EDITORS)) {
+      return 'code editor'
+    }
+    // spellcheck="false" usually means code. But Grammarly sets it on every
+    // field it takes over, before or after we see it, so with Grammarly on the
+    // page it says nothing; and a field taken once stays ours.
+    if (el.getAttribute('spellcheck') === 'false' && !accepted.has(el) && !grammarlyOnPage()) {
+      return 'spellcheck="false"'
+    }
+    return ''
+  }
+
+  /**
+   * Grammarly running on the same page puts its badge in the bottom-right
+   * corner and its underlines at the baseline, exactly where ours go. When it
+   * is there, ours move: badge to the left of its badge, underlines a little lower.
+   * It also sets spellcheck="false" on the fields it takes over (see skipReason).
+   */
+  function grammarlyOnPage() {
+    return !!document.querySelector('grammarly-extension, grammarly-desktop-integration, grammarly-popups, [data-gramm], [data-gr-ext-installed], [data-new-gr-c-s-check-loaded]')
   }
 
   const fields = new WeakMap()
@@ -567,17 +596,6 @@
     return true
   }
 
-  /**
-   * Grammarly running on the same page puts its badge in the bottom-right
-   * corner and its underlines at the baseline, exactly where ours go. When it
-   * is there, ours move: badge to the left of its badge, underlines a little lower.
-   */
-  function grammarlyHere(field) {
-    return !!document.querySelector('grammarly-extension, grammarly-desktop-integration')
-      || document.body?.hasAttribute('data-gr-ext-installed')
-      || field.el.hasAttribute('data-gramm')
-  }
-
   function render() {
     cancelAnimationFrame(frame)
     frame = requestAnimationFrame(draw)
@@ -595,7 +613,7 @@
     if (!box.width || !box.height) {
       return
     }
-    const shared = grammarlyHere(field)
+    const shared = grammarlyOnPage()
     // Underlines scrolled out of the field are not drawn.
     const clip = { left: box.left, right: box.right, top: box.top, bottom: box.bottom + 2 }
     for (const issue of visibleIssues(field)) {

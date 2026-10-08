@@ -20,7 +20,7 @@
   const MIN_TONE_TEXT = 30
 
   const COLORS = { spelling: '#e5484d', grammar: '#f5a524', style: '#8e4ec6', clarity: '#0090ff' }
-  const KIND_LABEL = { spelling: 'Spelling', grammar: 'Grammar', style: 'Style', clarity: 'Clarity' }
+  const KIND_LABEL = { spelling: 'Spelling', grammar: 'Grammar', style: 'Style', clarity: 'Rewrite sentence' }
   const TONE_LABEL = { formal: '🎩 Formal', friendly: '🙂 Friendly', casual: '👋 Casual', confident: '💪 Confident', frustrated: '😤 Frustrated' }
   const STYLES = [
     ['clearer', 'Clearer'],
@@ -64,7 +64,11 @@
     :host { all: initial; }
     * { box-sizing: border-box; }
     .line { position: fixed; height: 2px; border-radius: 1px; pointer-events: none; }
-    .line.clarity { background: repeating-linear-gradient(90deg, ${COLORS.clarity} 0 4px, transparent 4px 6px) !important; }
+    .line.clarity { opacity: .45; }
+    .diff { background: #f9f9fb; border-radius: 6px; padding: 8px; margin-bottom: 10px; }
+    .diff del { color: #ce2c31; text-decoration: line-through; }
+    .diff ins { color: #11a36a; text-decoration: none; font-weight: 600; }
+    .diff del + ins, .diff ins + del { margin-left: .3em; }
     .mirror { position: fixed; visibility: hidden; overflow: hidden; pointer-events: none; }
     .ui { pointer-events: auto; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: #1c2024; }
     .badge { position: fixed; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 11px; border: none;
@@ -98,7 +102,9 @@
       button.link:hover { color: #edeef0; }
       button.style { background: #2b2d31; border-color: #43484e; color: #edeef0; }
       button.style:hover { background: #363a3f; }
-      .result { background: #2b2d31; }
+      .result, .diff { background: #2b2d31; }
+      .diff del { color: #ff9592; }
+      .diff ins { color: #3dd68c; }
       .err { color: #ff9592; }
     }
   </style><div id="lines"></div><div id="ui"></div>`
@@ -282,8 +288,27 @@
     return `${issue.kind}|${issue.original}|${issue.message}`
   }
 
+  const plainWords = text => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+
+  /** A sentence rewrite that only makes the fixes already underlined in it says nothing new. */
+  function repeatsFixes(rewrite, fixes) {
+    let sentence = rewrite.original
+    const inside = fixes
+      .filter(fix => fix.offset >= rewrite.offset && fix.offset + fix.length <= rewrite.offset + rewrite.length && fix.replacements.length)
+      .sort((a, b) => b.offset - a.offset)
+    if (!inside.length) {
+      return false
+    }
+    for (const fix of inside) {
+      const at = fix.offset - rewrite.offset
+      sentence = sentence.slice(0, at) + fix.replacements[0] + sentence.slice(at + fix.length)
+    }
+    return plainWords(sentence) === plainWords(rewrite.replacements[0])
+  }
+
   function visibleIssues(field) {
-    const all = [...field.lt, ...field.ai].filter(issue => !field.ignored.has(keyOf(issue)))
+    const fixes = field.lt.filter(issue => !field.ignored.has(keyOf(issue)))
+    const all = [...fixes, ...field.ai.filter(issue => !repeatsFixes(issue, fixes))].filter(issue => !field.ignored.has(keyOf(issue)))
     // A clarity rewrite covers its whole sentence: drawn first, so spelling inside it lands on top.
     return all.sort((a, b) => (b.kind === 'clarity') - (a.kind === 'clarity') || a.offset - b.offset)
   }
@@ -584,6 +609,36 @@
     return node
   }
 
+  /** Old and new sentence as one line: removed words struck through, added ones green. */
+  function wordDiff(before, after) {
+    const a = before.split(/(\s+)/)
+    const b = after.split(/(\s+)/)
+    // Longest common subsequence of tokens, walked back into a list of kept/removed/added.
+    const lcs = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0))
+    for (let i = a.length - 1; i >= 0; i--) {
+      for (let j = b.length - 1; j >= 0; j--) {
+        lcs[i][j] = a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1])
+      }
+    }
+    const box = el('div', 'diff')
+    let i = 0
+    let j = 0
+    while (i < a.length || j < b.length) {
+      if (i < a.length && j < b.length && a[i] === b[j]) {
+        box.append(a[i++])
+        j++
+      }
+      else if (j < b.length && (i >= a.length || lcs[i][j + 1] >= lcs[i + 1][j])) {
+        box.append(/^\s+$/.test(b[j]) ? b[j++] : el('ins', '', b[j++]))
+      }
+      else {
+        // Whitespace from both sides is kept: the box collapses runs of it, and words stay apart.
+        box.append(/^\s+$/.test(a[i]) ? a[i++] : el('del', '', a[i++]))
+      }
+    }
+    return box
+  }
+
   function openIssue(issue, rect) {
     const field = active
     showCard(rect, (box) => {
@@ -592,10 +647,13 @@
       dot.style.background = COLORS[issue.kind]
       kind.append(dot, `${KIND_LABEL[issue.kind]}${issue.source === 'ollama' ? ' · local AI' : ''}`)
       box.append(kind, el('div', 'msg', issue.message))
+      if (issue.kind === 'clarity') {
+        box.appendChild(wordDiff(issue.original, issue.replacements[0]))
+      }
       if (issue.replacements.length) {
         const reps = el('div', 'reps')
         for (const replacement of issue.replacements.slice(0, 3)) {
-          const button = el('button', 'rep', replacement || '(remove)')
+          const button = el('button', 'rep', issue.kind === 'clarity' ? 'Use this sentence' : replacement || '(remove)')
           button.addEventListener('click', () => {
             closeCard()
             if (!replaceText(field, issue.offset, issue.offset + issue.length, issue.original, replacement)) {

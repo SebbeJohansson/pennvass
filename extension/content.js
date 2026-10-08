@@ -155,13 +155,25 @@
         el = el.parentElement
       }
     }
-    // Code editors turn spellcheck off. Grammarly's own opt-outs (data-gramm="false") are not
-    // honoured, so a page can turn Grammarly off in a field and compare this alone.
-    if (el.closest('[data-fake-grammarly="off"]')
-      || el.getAttribute('spellcheck') === 'false' || el.readOnly || el.disabled) {
+    // Grammarly's own opt-outs (data-gramm="false") are not honoured, so a page
+    // can turn Grammarly off in a field and compare this alone.
+    if (el.closest('[data-fake-grammarly="off"]') || el.readOnly || el.disabled) {
       return null
     }
+    // Code editors turn spellcheck off. So does Grammarly, on every field it
+    // takes over, which is not an opt-out: a field it has marked, or one taken
+    // before, stays ours.
+    if (el.getAttribute('spellcheck') === 'false' && !accepted.has(el) && !markedByGrammarly(el)) {
+      return null
+    }
+    accepted.add(el)
     return el
+  }
+
+  const accepted = new WeakSet()
+
+  function markedByGrammarly(el) {
+    return el.getAttributeNames().some(name => name.startsWith('data-gr'))
   }
 
   const fields = new WeakMap()
@@ -552,7 +564,7 @@
   /**
    * Grammarly running on the same page puts its badge in the bottom-right
    * corner and its underlines at the baseline, exactly where ours go. When it
-   * is there, ours move: badge to the bottom-left, underlines a little lower.
+   * is there, ours move: badge to the left of its badge, underlines a little lower.
    */
   function grammarlyHere(field) {
     return !!document.querySelector('grammarly-extension, grammarly-desktop-integration')
@@ -613,9 +625,8 @@
     badge.textContent = field.offline ? '!' : busy && !count ? '…' : count ? String(count) : '✓'
     badge.title = field.offline ? 'fake-grammarly: my-agent is not running on 127.0.0.1:8787' : `fake-grammarly: ${count} suggestion${count === 1 ? '' : 's'}`
     const size = badge.getBoundingClientRect()
-    badge.style.left = shared
-      ? `${Math.max(box.left, 0) + 6}px`
-      : `${Math.min(box.right, innerWidth) - size.width - 6}px`
+    // Grammarly's own badge takes the last ~64px of the corner; ours sits just left of it.
+    badge.style.left = `${Math.min(box.right, innerWidth) - size.width - 6 - (shared ? 64 : 0)}px`
     badge.style.top = `${Math.min(box.bottom, innerHeight) - size.height - 6}px`
   }
 

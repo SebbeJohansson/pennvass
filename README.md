@@ -41,7 +41,7 @@ After a change, run step 2 again and click the reload arrow on the extension's c
 - Only a **rewrite** leaves the machine: it goes to Claude, and only when you click one.
 - Skipped: password and other non-text inputs, `spellcheck="false"` fields (code
   editors), and anything marked `data-fake-grammarly="off"`. The popup turns it off per site.
-- Next to Grammarly, the badge moves to the bottom-left corner and the underlines
+- Next to Grammarly, the badge moves left of Grammarly's badge and the underlines
   sit 3 px lower, so both show. `/compare` on the test page puts them side by side.
 
 ## Limits

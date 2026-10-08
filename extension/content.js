@@ -50,8 +50,15 @@
   chrome.storage.local.get({ disabledHosts: [], improve: true, tone: true }).then(applySettings)
   chrome.storage.onChanged.addListener(() => chrome.storage.local.get({ disabledHosts: [], improve: true, tone: true }).then(applySettings))
 
+  /** Which backend answered last: 'my-agent' or 'direct'. Only my-agent can rewrite. */
+  let lastBackend = ''
+
   function api(route, body) {
     return chrome.runtime.sendMessage({ type: 'write', route, body })
+      .then((result) => {
+        lastBackend = result?.backend ?? lastBackend
+        return result
+      })
       .catch(() => ({ ok: false, error: 'the extension was reloaded; reload this page' }))
   }
 
@@ -93,6 +100,7 @@
     .styles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 8px 0; }
     button.style { border: 1px solid #d9d9e0; border-radius: 6px; padding: 5px 8px; background: white; font: inherit; cursor: pointer; text-align: left; }
     button.style:hover { background: #f0f0f3; }
+    button.style:disabled { opacity: .45; cursor: default; background: none; }
     .result { white-space: pre-wrap; max-height: 260px; overflow: auto; background: #f9f9fb; border-radius: 6px; padding: 8px; margin: 8px 0; }
     .err { color: #ce2c31; }
     .list { max-height: 220px; overflow: auto; margin: 8px -4px; }
@@ -656,7 +664,7 @@
     const busy = field.checking || field.aiBusy
     badge.className = `ui badge${field.offline ? ' offline' : busy ? ' busy' : count ? ' issues' : ''}`
     badge.textContent = field.offline ? '!' : busy && !count ? '…' : count ? String(count) : '✓'
-    badge.title = field.offline ? 'Pennvass: the backend is not running on 127.0.0.1:8787' : `Pennvass: ${count} suggestion${count === 1 ? '' : 's'}`
+    badge.title = field.offline ? `Pennvass: ${field.error}` : `Pennvass: ${count} suggestion${count === 1 ? '' : 's'}`
     const size = badge.getBoundingClientRect()
     const right = Math.min(box.right, innerWidth)
     const bottom = Math.min(box.bottom, innerHeight)
@@ -828,7 +836,7 @@
       }
       box.appendChild(head)
       const status = field.offline
-        ? 'The backend is not running on 127.0.0.1:8787.'
+        ? `${field.error[0]?.toUpperCase() ?? ''}${field.error.slice(1)}.`
         : field.error
           ? field.error
           : field.aiBusy
@@ -843,10 +851,15 @@
         }
         box.appendChild(list)
       }
-      box.appendChild(el('div', 'muted', selection ? 'Rewrite the selection with Claude:' : 'Rewrite all of it with Claude:'))
+      // Direct mode has no model it can safely give web page text to; my-agent runs one with no tools.
+      const canRewrite = lastBackend !== 'direct'
+      box.appendChild(el('div', 'muted', !canRewrite
+        ? 'Rewrite with Claude needs my-agent running.'
+        : selection ? 'Rewrite the selection with Claude:' : 'Rewrite all of it with Claude:'))
       const styles = el('div', 'styles')
       for (const [style, label] of STYLES) {
         const button = el('button', 'style', label)
+        button.disabled = !canRewrite
         button.addEventListener('click', () => runRewrite(field, style, label, selection, anchor))
         styles.appendChild(button)
       }

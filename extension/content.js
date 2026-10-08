@@ -198,7 +198,8 @@
   /**
    * Grammarly running on the same page puts its badge in the bottom-right
    * corner and its underlines at the baseline, exactly where ours go. When it
-   * is there, ours move: badge to the left of its badge, underlines a little lower.
+   * is there, ours move: underlines a little lower, and in a single-line field
+   * the badge left of its pill (in taller fields ours is bottom-left anyway).
    * It also sets spellcheck="false" on the fields it takes over (see skipReason).
    */
   function grammarlyOnPage() {
@@ -651,11 +652,17 @@
     const size = badge.getBoundingClientRect()
     const right = Math.min(box.right, innerWidth)
     const bottom = Math.min(box.bottom, innerHeight)
-    // A single-line field gets the badge centred on its line; a taller one in its corner.
-    const centre = box.height < 60 ? (box.top + bottom) / 2 : bottom - (shared ? 27 : 17)
-    // Grammarly's pill ends 12px from the right and is ~56px wide, centred 27px up; ours sits 6px left of it.
-    badge.style.left = `${right - size.width - (shared ? 74 : 6)}px`
-    badge.style.top = `${centre - size.height / 2}px`
+    if (box.height < 60) {
+      // A single-line field: bottom-left would sit on its first word, so the
+      // badge goes at the end of the line, left of Grammarly's pill if it is there.
+      badge.style.left = `${right - size.width - (shared ? 74 : 6)}px`
+      badge.style.top = `${(box.top + bottom) / 2 - size.height / 2}px`
+    }
+    else {
+      // Bottom-left corner: clear of Grammarly's pill and of the resize handle.
+      badge.style.left = `${Math.max(box.left, 0) + 8}px`
+      badge.style.top = `${bottom - size.height - 8}px`
+    }
   }
 
   // ------------------------------------------------------------ cards

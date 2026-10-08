@@ -398,6 +398,12 @@
     field.checking = false
     field.offline = !result.ok && !!result.offline
     field.error = result.ok ? '' : result.error
+    // my-agent restarting (a rebuild takes a few seconds) should not leave the badge
+    // grey until you type again: try again in 5 s while this field is focused.
+    if (field.offline) {
+      clearTimeout(field.checkTimer)
+      field.checkTimer = setTimeout(() => field === active && runCheck(field).then(() => !field.offline && runAi(field)), 5000)
+    }
     if (version !== field.version) {
       return
     }
@@ -625,9 +631,13 @@
     badge.textContent = field.offline ? '!' : busy && !count ? '…' : count ? String(count) : '✓'
     badge.title = field.offline ? 'fake-grammarly: my-agent is not running on 127.0.0.1:8787' : `fake-grammarly: ${count} suggestion${count === 1 ? '' : 's'}`
     const size = badge.getBoundingClientRect()
-    // Grammarly's own badge takes the last ~64px of the corner; ours sits just left of it.
-    badge.style.left = `${Math.min(box.right, innerWidth) - size.width - 6 - (shared ? 64 : 0)}px`
-    badge.style.top = `${Math.min(box.bottom, innerHeight) - size.height - 6}px`
+    const right = Math.min(box.right, innerWidth)
+    const bottom = Math.min(box.bottom, innerHeight)
+    // A single-line field gets the badge centred on its line; a taller one in its corner.
+    const centre = box.height < 60 ? (box.top + bottom) / 2 : bottom - (shared ? 27 : 17)
+    // Grammarly's pill ends 12px from the right and is ~56px wide, centred 27px up; ours sits 6px left of it.
+    badge.style.left = `${right - size.width - (shared ? 74 : 6)}px`
+    badge.style.top = `${centre - size.height / 2}px`
   }
 
   // ------------------------------------------------------------ cards

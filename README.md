@@ -8,18 +8,21 @@ underlines mistakes as you type, suggests clearer versions of wordy sentences,
 reads the tone of what you wrote, and can have Claude rewrite a selection on
 request.
 
-It is a personal stand-in for a paid writing assistant. The extension does
-not check anything itself: it sends the text to a backend on `127.0.0.1` and
-draws what comes back.
+It is a personal stand-in for a paid writing assistant. The extension talks
+to engines on your own machine, directly or through a backend server:
 
 ```
 Chrome ── content.js: finds the focused textbox, draws underlines, cards and a badge
-       └─ background.js ──POST──▶ backend on 127.0.0.1:8787 /v1/write/*
-                                    ├─ check    spelling and grammar   e.g. LanguageTool, ~100 ms
-                                    ├─ improve  clearer sentences      e.g. a local LLM via Ollama, 2–8 s per sentence
-                                    ├─ tone     tone of the whole text e.g. a local classifier
-                                    └─ rewrite  rewrite on request     e.g. Claude, 5–30 s
+       └─ background.js ─┬─ direct ──▶ LanguageTool  127.0.0.1:8010   spelling and grammar, ~100 ms
+                         │          ├─▶ Ollama        127.0.0.1:11434  clearer sentences, 2–8 s each
+                         │          └─▶ Laya          127.0.0.1:8000   tone (optional)
+                         └─ backend ─▶ a server on 127.0.0.1:8787 with the same checks, plus rewrite
 ```
+
+Out of the box it uses a backend when one answers on `127.0.0.1:8787`, and
+calls the engines directly when none does. Starting or stopping the backend
+needs no setting changed. Only a backend can rewrite: that needs a model with
+no tools, which the extension cannot set up itself.
 
 ## What you see
 
@@ -42,18 +45,37 @@ Chrome ── content.js: finds the focused textbox, draws underlines, cards and
 
 ## Install
 
-1. Run a backend that implements the [API](#backend-api) on `127.0.0.1:8787`.
-2. In Chrome, open `chrome://extensions` and turn on **Developer mode**.
-3. Click **Load unpacked** and pick the `extension/` folder.
+1. Start LanguageTool:
+   `docker run -d --name languagetool -p 127.0.0.1:8010:8010 erikvl87/languagetool`
+2. For clarity suggestions, install [Ollama](https://ollama.com) and run
+   `ollama pull qwen2.5:7b`. It needs no other setup: the extension removes the
+   `Origin` header from its own requests to Ollama, which Ollama would otherwise refuse.
+3. In Chrome, open `chrome://extensions` and turn on **Developer mode**.
+4. Click **Load unpacked** and pick the `extension/` folder.
+
+The popup shows what it found, for example *Direct: LanguageTool ✓ Ollama ✓ Laya no key*.
+Under **Addresses and keys** you can change the engines' addresses, the Ollama
+model, and add a [Laya](https://github.com/NandhaKishorM/laya) key for tone.
+
+| Backend setting | Uses |
+|---|---|
+| **Auto** (default) | the backend on `127.0.0.1:8787` while its `/health` answers (checked every 30 s, and at once when a call fails), the engines directly otherwise |
+| **my-agent** | only the backend |
+| **Direct** | only the engines |
 
 On WSL, Chrome on Windows loads unpacked extensions unreliably from `\\wsl$`.
 `./scripts/install-windows.sh` copies `extension/` to `%USERPROFILE%\pennvass`
 and stamps the copy with its commit, shown on the extension's card. Load that
 folder instead, and run the script again after each change.
 
-## Backend API
+## Your own backend (optional)
 
-Four `POST` routes, JSON in and out. Only `check` is required: if the others
+A backend is a server on `127.0.0.1:8787` that runs the engines for the
+extension, and can add a rewrite. The checks themselves are in
+`extension/lib/write-core.js`, a plain ES module with no browser APIs, so a
+Node backend can import the same file (types in `write-core.d.ts`).
+
+It has four `POST` routes, JSON in and out. Only `check` is required: if the others
 fail, their part of the UI stays empty.
 
 | Route | Request | Response |
@@ -82,7 +104,7 @@ interface Issue {
   `frustrated`, plus a probability for each.
 - **rewrite** `style` is one of `clearer`, `shorter`, `formal`, `friendly`,
   `confident`, `english`, `swedish`.
-- `GET /health` answering 200 lights up the popup's status dot.
+- `GET /health` answering 200 is how Auto finds the backend.
 
 Errors are `{ error }` with a 4xx or 5xx status, and the message is shown in the badge menu.
 
@@ -111,12 +133,17 @@ only this extension:
 - **Where a rewrite goes:** to whatever model the backend uses, and only when
   you click one. With a hosted model like Claude, that means the selected text
   leaves your machine.
-- **What the extension stores:** your settings, in `chrome.storage.local`.
+- **What the extension stores:** your settings and the Laya key, in
+  `chrome.storage.local`. The key is only ever sent to Laya. Clarity answers
+  are cached by sentence in `chrome.storage.session`, which is cleared when the browser closes.
 
 ## Security
 
-- `background.js` only calls a loopback address, and only the four routes
-  above. The popup refuses any other address.
+- The extension can only reach `127.0.0.1` and `localhost` (its host
+  permissions), and the popup refuses any other address.
+- It removes the `Origin` header only from its own requests, and only to the
+  configured Ollama address. Pages' requests to Ollama are not touched, so
+  Ollama's protection against web pages still holds.
 - The UI lives in a closed shadow root, so page scripts cannot reach it.
   Applying a fix or starting a rewrite needs a real click; one a page script
   fakes is ignored.
@@ -133,7 +160,7 @@ only this extension:
 
 ## Developing
 
-`dev/serve.mjs` serves test pages and proxies `/v1/write/*` to the backend.
+`dev/serve.mjs` serves test pages. The `/` page (no extension) proxies `/v1/write/*` to a backend.
 
 ```sh
 node dev/serve.mjs   # UPSTREAM=http://127.0.0.1:8787 PORT=8790 by default

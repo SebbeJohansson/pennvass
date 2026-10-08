@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>fake-grammarly harness</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 720px; margin: 24px auto; padding: 0 16px; }
+  textarea, input, [contenteditable] { width: 100%; box-sizing: border-box; font: inherit; padding: 8px; border: 1px solid #bbb; border-radius: 6px; margin-bottom: 18px; }
+  textarea { height: 120px; }
+  [contenteditable] { min-height: 90px; }
+  h2 { font-size: 13px; margin: 0 0 4px; color: #666; }
+</style>
+</head>
+<body>
+  <h2>textarea</h2>
+  <textarea id="ta">Their is a error in this sentense. Due to the fact that the report was not being sent by him in a timely manner, the delays were caused.</textarea>
+  <h2>input</h2>
+  <input id="in" value="I has a questin about the meeting tomorow.">
+  <h2>contenteditable</h2>
+  <div id="ce" contenteditable="true"><p>Hi Anna,</p><p>Me and him goes to store yesterday for buying the things what we needs. <b>Thanks</b> for you help!</p></div>
+  <h2>contenteditable, Swedish</h2>
+  <div id="sv" contenteditable="true">Jag har inte sett den där filmen än, men jag vill gärna se dem. Tack för igår, det var jätte kul.</div>
+  <h2>spellcheck=false (ignored)</h2>
+  <textarea spellcheck="false">Their is a error here that should not be underlined.</textarea>
+  <script src="/shim.js"></script>
+  <script src="/content.js"></script>
+</body>
+</html>

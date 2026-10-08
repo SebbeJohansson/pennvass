@@ -307,8 +307,10 @@
   }
 
   function visibleIssues(field) {
-    const fixes = field.lt.filter(issue => !field.ignored.has(keyOf(issue)))
-    const all = [...fixes, ...field.ai.filter(issue => !repeatsFixes(issue, fixes))].filter(issue => !field.ignored.has(keyOf(issue)))
+    // An underline is only drawn over the text it was found in.
+    const current = issue => !field.ignored.has(keyOf(issue)) && field.text.slice(issue.offset, issue.offset + issue.length) === issue.original
+    const fixes = field.lt.filter(current)
+    const all = [...fixes, ...field.ai.filter(issue => current(issue) && !repeatsFixes(issue, fixes))]
     // A clarity rewrite covers its whole sentence: drawn first, so spelling inside it lands on top.
     return all.sort((a, b) => (b.kind === 'clarity') - (a.kind === 'clarity') || a.offset - b.offset)
   }
@@ -500,12 +502,37 @@
     closeCard()
     if (active) {
       mountHost()
-      active.text = readText(active).text
-      if (active.checked !== active.version) {
+      // Text changed while the field was not focused is checked now.
+      if (!syncText(active) && active.checked !== active.version) {
         schedule(active)
       }
     }
     render()
+  }
+
+  /**
+   * The one place a field's text change is noticed: typed, pasted, set by the
+   * page, or swapped while the field was not focused. Underlines the change
+   * did not touch move with the text; the rest go until the next check.
+   * Only the focused field is checked right away; another one is checked when
+   * it is focused, so a page filling four fields does not queue four checks.
+   */
+  function syncText(field) {
+    const before = field.text
+    const after = readText(field).text
+    if (after === before) {
+      return false
+    }
+    field.text = after
+    field.version++
+    field.lt = shiftIssues(field.lt, before, after)
+    field.ai = shiftIssues(field.ai, before, after)
+    if (field === active) {
+      closeCard()
+      schedule(field)
+      render()
+    }
+    return true
   }
 
   /**
@@ -790,22 +817,16 @@
     if (!el || !settings.enabled) {
       return
     }
-    if (fieldFor(el) !== active) {
-      setActive(el)
-    }
-    const field = active
-    const before = field.text
-    field.text = readText(field).text
-    if (field.text === before) {
-      return
-    }
-    field.version++
-    field.lt = shiftIssues(field.lt, before, field.text)
-    field.ai = shiftIssues(field.ai, before, field.text)
-    closeCard()
-    render()
-    schedule(field)
+    syncText(fieldFor(el))
   }, true)
+
+  // Some pages set a field's text without an input event (a sent message
+  // clearing the box, a framework resetting it). Caught within a second.
+  setInterval(() => {
+    if (active?.el.isConnected) {
+      syncText(active)
+    }
+  }, 1000)
 
   // The underlines take no clicks, so the field gets every one; a click that
   // lands on an underline then opens its card.

@@ -9,4 +9,10 @@ target="${1:-$profile/fake-grammarly}"
 mkdir -p "$target"
 rm -rf "${target:?}"/*
 cp -r "$here/extension/." "$target/"
-echo "Copied to $(wslpath -w "$target")"
+# chrome://extensions shows version_name on the card: proof of which copy is loaded.
+stamp="$(git -C "$here" rev-parse --short HEAD)$(git -C "$here" diff --quiet -- extension || echo '+changes') $(date +%H:%M)"
+node -e '
+  const fs = require("fs"); const file = process.argv[1]; const m = JSON.parse(fs.readFileSync(file, "utf8"))
+  m.version_name = `${m.version} (${process.argv[2]})`
+  fs.writeFileSync(file, JSON.stringify(m, null, 2) + "\n")' "$target/manifest.json" "$stamp"
+echo "Copied to $(wslpath -w "$target") as $(grep -o '"version_name": "[^"]*"' "$target/manifest.json" | cut -d'"' -f4)"

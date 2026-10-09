@@ -45,8 +45,13 @@ no tools, which the extension cannot set up itself.
 
 ## Install
 
-1. Start LanguageTool:
-   `docker run -d --name languagetool -p 127.0.0.1:8010:8010 erikvl87/languagetool`
+1. Build and start LanguageTool. The image holds only the official release zip
+   (checked against a pinned hash) on Eclipse Temurin's Java, see
+   [`docker/languagetool/Dockerfile`](docker/languagetool/Dockerfile):
+   ```sh
+   docker build -t pennvass-languagetool docker/languagetool
+   docker run -d --name languagetool -p 127.0.0.1:8010:8010 pennvass-languagetool
+   ```
 2. For clarity suggestions, install [Ollama](https://ollama.com) and run
    `ollama pull qwen2.5:7b`. It needs no other setup: the extension removes the
    `Origin` header from its own requests to Ollama, which Ollama would otherwise refuse.

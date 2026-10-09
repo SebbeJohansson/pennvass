@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Pennvass: a fountain-pen nib writing a red underline. Source for icon-*.png (scripts/icons.mjs). -->
+  <rect width="128" height="128" rx="28" fill="#1b2b44"/>
+  <path d="M12 98 q 7.5 -9 15 0 t 15 -4" fill="none" stroke="#e5484d" stroke-width="7" stroke-linecap="round"/>
+  <g transform="rotate(40 70 56)">
+    <rect x="54" y="8" width="32" height="14" rx="3" fill="#f2f4f7"/>
+    <path d="M70 100 L48 56 Q45 47 52 40 L56 26 L84 26 L88 40 Q95 47 92 56 Z" fill="#f2f4f7"/>
+    <line x1="70" y1="58" x2="70" y2="97" stroke="#1b2b44" stroke-width="3.5" stroke-linecap="round"/>
+    <circle cx="70" cy="56" r="6" fill="#1b2b44"/>
+  </g>
+</svg>

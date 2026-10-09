@@ -157,6 +157,7 @@
 
   function editableFrom(target) {
     let el = target instanceof Element ? target : target?.parentElement
+    let widget = ''
     if (!el || host.contains(el)) {
       return null
     }
@@ -167,11 +168,13 @@
       if (!el.isContentEditable) {
         return null
       }
+      widget = widgetRole(el)
       while (el.parentElement?.isContentEditable) {
         el = el.parentElement
+        widget ||= widgetRole(el)
       }
     }
-    const skip = skipReason(el)
+    const skip = widget ? `inside role="${widget}"` : skipReason(el)
     if (skip) {
       if (!told.has(el)) {
         told.add(el)
@@ -183,9 +186,22 @@
     return el
   }
 
+  /**
+   * Some apps make a whole list or grid contenteditable only to catch paste
+   * and keys, like PowerPoint Online's slide thumbnails (role="option" inside
+   * one big contenteditable). The role on the way from the focused element up
+   * to the editable root says so.
+   */
+  function widgetRole(el) {
+    const role = el.getAttribute('role')
+    return role && WIDGET_ROLES.has(role) ? role : ''
+  }
+
   const accepted = new WeakSet()
   const told = new WeakSet()
   const CODE_EDITORS = '.cm-editor, .CodeMirror, .monaco-editor, .ace_editor'
+  // Interactive widgets only: editors put list, listitem, img and presentation on real text.
+  const WIDGET_ROLES = new Set(['listbox', 'option', 'tree', 'treeitem', 'grid', 'gridcell', 'tablist', 'tab', 'menu', 'menuitem', 'toolbar', 'button'])
 
   /**
    * Why a field is left alone, or '' when it is not. Grammarly's own opt-out

@@ -223,7 +223,7 @@ export async function improve(text, { complete, cache }) {
 }
 
 /** One sentence to Ollama's chat API with the improve prompt's schema; its JSON reply back. */
-export function ollamaComplete({ ollamaUrl, model, timeoutMs = 60_000 }) {
+export function ollamaComplete({ ollamaUrl, model, timeoutMs = 60_000, keepAlive = '60m' }) {
   return async (system, sentence) => {
     const response = await fetch(`${ollamaUrl}/api/chat`, {
       method: 'POST',
@@ -234,7 +234,7 @@ export function ollamaComplete({ ollamaUrl, model, timeoutMs = 60_000 }) {
         messages: [{ role: 'system', content: system }, { role: 'user', content: sentence }],
         format: IMPROVE_FORMAT,
         think: false,
-        keep_alive: '60m',
+        keep_alive: keepAlive,
         options: { temperature: 0, top_p: 1, num_predict: 200 },
       }),
       signal: AbortSignal.timeout(timeoutMs),

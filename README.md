@@ -41,8 +41,9 @@ no tools, which the extension cannot set up itself.
   formal, friendlier, more confident, in English, in Swedish.
 - **In email** only your reply is checked: the signature and the quoted thread
   (Outlook, Gmail, Thunderbird markup) are left out.
-- **The popup** turns Pennvass off per site, and turns the clarity and tone
-  checks on or off.
+- **The popup** turns Pennvass off per site, turns the clarity and tone
+  checks on or off, and with *Only check what I type* skips lines that were
+  in the field before you started typing.
 - **Next to Grammarly** both can run: Pennvass's underlines sit a few pixels lower.
 
 ## Install

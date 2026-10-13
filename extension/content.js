@@ -36,19 +36,24 @@
 
   // ------------------------------------------------------------ settings
 
-  const settings = { enabled: true, improve: true, tone: true }
+  const settings = { enabled: true, improve: true, tone: true, ownText: false }
 
   function applySettings(stored) {
     settings.enabled = !(stored.disabledHosts ?? []).includes(location.hostname)
     settings.improve = stored.improve ?? true
     settings.tone = stored.tone ?? true
+    settings.ownText = stored.ownText ?? false
     if (!settings.enabled) {
       setActive(null)
     }
   }
 
-  chrome.storage.local.get({ disabledHosts: [], improve: true, tone: true }).then(applySettings)
-  chrome.storage.onChanged.addListener(() => chrome.storage.local.get({ disabledHosts: [], improve: true, tone: true }).then(applySettings))
+  const STORED = { disabledHosts: [], improve: true, tone: true, ownText: false }
+  chrome.storage.local.get(STORED).then(applySettings)
+  chrome.storage.onChanged.addListener(() => chrome.storage.local.get(STORED).then((stored) => {
+    applySettings(stored)
+    render()
+  }))
 
   /** Which backend answered last: 'my-agent' or 'direct'. Only my-agent can rewrite. */
   let lastBackend = ''
@@ -281,6 +286,7 @@
       }
       fields.set(el, field)
       field.text = readText(field).text
+      field.before = new Set(lines(field.text))
     }
     return field
   }
@@ -447,9 +453,26 @@
     return plainWords(sentence) === plainWords(rewrite.replacements[0])
   }
 
+  const lines = text => text.split('\n').map(line => line.trim()).filter(Boolean)
+
+  /**
+   * With "Only what I write" on, a line that was in the field before you
+   * started (a draft you came back to, text the page put there) is not yours
+   * to fix. Lines are compared by content, so editing one makes it yours.
+   */
+  function isOwn(field, issue) {
+    if (!settings.ownText) {
+      return true
+    }
+    const start = field.text.lastIndexOf('\n', issue.offset - 1) + 1
+    const end = field.text.indexOf('\n', issue.offset)
+    return !field.before.has(field.text.slice(start, end < 0 ? undefined : end).trim())
+  }
+
   function visibleIssues(field) {
     // An underline is only drawn over the text it was found in.
     const current = issue => !field.ignored.has(keyOf(issue)) && field.text.slice(issue.offset, issue.offset + issue.length) === issue.original
+      && isOwn(field, issue)
     const fixes = field.lt.filter(current)
     const all = [...fixes, ...field.ai.filter(issue => current(issue) && !repeatsFixes(issue, fixes))]
     // A clarity rewrite covers its whole sentence: drawn first, so spelling inside it lands on top.
@@ -650,7 +673,7 @@
     if (active) {
       mountHost()
       // Text changed while the field was not focused is checked now.
-      if (!syncText(active) && active.checked !== active.version) {
+      if (!syncText(active, true) && active.checked !== active.version) {
         schedule(active)
       }
     }
@@ -663,12 +686,18 @@
    * did not touch move with the text; the rest go until the next check.
    * Only the focused field is checked right away; another one is checked when
    * it is focused, so a page filling four fields does not queue four checks.
+   * A change no input event told of was made by the page, not by you, so its
+   * lines count as text that was already there (see isOwn).
    */
-  function syncText(field) {
+  function syncText(field, byPage = false) {
     const before = field.text
     const after = readText(field).text
     if (after === before) {
       return false
+    }
+    if (byPage) {
+      const had = new Set(lines(before))
+      lines(after).filter(line => !had.has(line)).forEach(line => field.before.add(line))
     }
     field.text = after
     field.version++
@@ -1047,7 +1076,7 @@
   // The same tick heals a lost active field: focus is in one, but nothing is drawn for it.
   setInterval(() => {
     if (active?.el.isConnected) {
-      syncText(active)
+      syncText(active, true)
     }
     else if (settings.enabled && document.hasFocus()) {
       const el = focusedEditable()

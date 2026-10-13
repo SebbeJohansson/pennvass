@@ -2,6 +2,7 @@ const DEFAULTS = {
   disabledHosts: [],
   improve: true,
   tone: true,
+  ownText: false,
   backend: 'auto',
   baseUrl: 'http://127.0.0.1:8787',
   languagetoolUrl: 'http://127.0.0.1:8010',
@@ -41,7 +42,7 @@ async function main() {
     await chrome.storage.local.set({ disabledHosts: next })
   })
 
-  for (const key of ['improve', 'tone']) {
+  for (const key of ['improve', 'tone', 'ownText']) {
     const box = document.getElementById(key)
     box.checked = stored[key]
     box.addEventListener('change', () => chrome.storage.local.set({ [key]: box.checked }))

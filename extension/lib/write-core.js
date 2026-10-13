@@ -57,28 +57,36 @@ export function readLanguageTool(body) {
   return { language: body?.language?.detectedLanguage?.code ?? body?.language?.code ?? 'auto', issues }
 }
 
-/** Below this many letters a paragraph says too little for LanguageTool to tell its language. */
+/** Below this many letters a line says too little for LanguageTool to tell its language. */
 const MIN_DETECT_LETTERS = 25
 
+/** LanguageTool checks spelling only in a variant: plain "en" or "de" has no dictionary. */
+const VARIANTS = { de: 'de-DE', pt: 'pt-PT', nl: 'nl-NL', ca: 'ca-ES' }
+
+const base = code => code.split('-')[0].toLowerCase()
+
 /**
- * Paragraphs (split at blank lines) with their offsets. A Swedish email
- * with an English signature and disclaimer is one text in two languages,
- * and one auto-detected language for all of it marks every Swedish word.
+ * Non-empty lines with their offsets. A Swedish email with an English
+ * disclaimer, or a Swedish sentence above an English bullet list, is one text
+ * in two languages, and one auto-detected language for all of it marks every
+ * word of the other.
  */
-export function paragraphs(text) {
+export function lines(text) {
   const found = []
-  const re = /\S[\s\S]*?(?=\n[ \t]*\n|\s*$)/g
-  for (let m; (m = re.exec(text));) {
-    found.push({ text: m[0], offset: m.index, letters: (m[0].match(/\p{L}/gu) ?? []).length })
+  for (const m of text.matchAll(/\S[^\n]*/g)) {
+    found.push({ text: m[0], offset: m.index, end: m.index + m[0].length, letters: (m[0].match(/\p{L}/gu) ?? []).length })
   }
   return found
 }
 
-async function checkOne(text, language, { languagetoolUrl, englishVariant }) {
+async function checkOne(text, language, { languagetoolUrl, englishVariant, languages }) {
+  const params = language === 'auto'
+    ? { text, language, preferredVariants: englishVariant, ...(languages.length ? { preferredLanguages: [...new Set(languages.map(base))].join(',') } : {}) }
+    : { text, language }
   const response = await fetch(`${languagetoolUrl}/v2/check`, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams(language === 'auto' ? { text, language, preferredVariants: englishVariant } : { text, language }),
+    body: new URLSearchParams(params),
     signal: AbortSignal.timeout(15_000),
   })
   if (!response.ok) {
@@ -87,27 +95,77 @@ async function checkOne(text, language, { languagetoolUrl, englishVariant }) {
   return readLanguageTool(await response.json())
 }
 
-/**
- * Each paragraph long enough to tell is checked in its own detected language.
- * Short ones ("Med vänlig hälsning", "AI Engineer") take the language of the
- * paragraph before them, or after when they open the text.
- */
-export async function check(text, { languagetoolUrl, englishVariant = 'en-US' }) {
-  const deps = { languagetoolUrl, englishVariant }
-  const parts = paragraphs(text)
-  if (parts.length <= 1) {
-    return checkOne(text, 'auto', deps)
-  }
-  const long = parts.filter(p => p.letters >= MIN_DETECT_LETTERS)
-  if (!long.length) {
-    return checkOne(text, 'auto', deps)
-  }
-  await Promise.all(long.map(async p => { p.result = await checkOne(p.text, 'auto', deps) }))
-  await Promise.all(parts.filter(p => !p.result).map(async p => {
-    const before = long.findLast(q => q.offset < p.offset) ?? long[0]
-    p.result = await checkOne(p.text, before.result.language, deps)
+/** Runs `work` on every item, a few at a time: an email of 80 lines should not be 80 requests at once. */
+async function eachLimited(items, work, limit = 6) {
+  let next = 0
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      await work(items[next++])
+    }
   }))
-  const issues = parts.flatMap(p => p.result.issues.map(issue => ({ ...issue, offset: issue.offset + p.offset })))
+}
+
+/**
+ * Drops each misspelling that one of the writer's other languages spells
+ * right: "First party" under a Swedish sentence, "deployment" in one. The
+ * cost is a misspelled word that is a real word of the other language.
+ */
+async function acceptOtherLanguages(text, result, others, deps) {
+  const misspelled = result.issues.filter(i => i.kind === 'spelling')
+  if (!misspelled.length || !others.length) {
+    return result
+  }
+  const readings = await Promise.all(others.map(code => checkOne(text, code, deps)))
+  const fineIn = (issue, reading) => !reading.issues.some(o =>
+    o.kind === 'spelling' && o.offset < issue.offset + issue.length && issue.offset < o.offset + o.length)
+  const accepted = new Set(misspelled.filter(i => readings.some(r => fineIn(i, r))))
+  return { ...result, issues: result.issues.filter(i => !accepted.has(i)) }
+}
+
+/**
+ * Each line long enough to tell gets its own detected language; short ones
+ * ("Attention:", "AI Engineer") take the language of the line before, or
+ * after when they open the text. Consecutive lines in one language are then
+ * checked together, so a sentence wrapped over two lines stays one sentence.
+ *
+ * `languages` are the writer's languages (the browser's accepted ones):
+ * they steer detection, and a word spelled right in one of them is no
+ * misspelling in another.
+ */
+export async function check(text, { languagetoolUrl, englishVariant = 'en-US', languages = [] }) {
+  const deps = { languagetoolUrl, englishVariant, languages }
+  const parts = lines(text)
+  const long = parts.filter(p => p.letters >= MIN_DETECT_LETTERS)
+  await eachLimited(long, async p => { p.result = await checkOne(p.text, 'auto', deps) })
+  if (!long.length) {
+    const result = await checkOne(text, 'auto', deps)
+    return acceptOtherLanguages(text, result, others(result.language, [], deps), deps)
+  }
+  for (const p of parts) {
+    p.language = (p.result ?? long.findLast(q => q.offset < p.offset)?.result ?? long[0].result).language
+  }
+
+  const runs = []
+  for (const p of parts) {
+    const run = runs.at(-1)
+    if (run?.language === p.language) {
+      run.end = p.end
+      run.lines.push(p)
+    }
+    else {
+      runs.push({ language: p.language, offset: p.offset, end: p.end, lines: [p] })
+    }
+  }
+  const detected = long.map(p => p.result.language)
+  await eachLimited(runs, async run => {
+    const runText = text.slice(run.offset, run.end)
+    const result = run.lines.length === 1 && run.lines[0].result
+      ? run.lines[0].result
+      : await checkOne(runText, run.language, deps)
+    run.result = await acceptOtherLanguages(runText, result, others(run.language, detected, deps), deps)
+  })
+
+  const issues = runs.flatMap(run => run.result.issues.map(issue => ({ ...issue, offset: issue.offset + run.offset })))
   // The language of most of the text, for whoever wants one.
   const letters = {}
   for (const p of long) {
@@ -115,6 +173,18 @@ export async function check(text, { languagetoolUrl, englishVariant = 'en-US' })
   }
   const language = Object.entries(letters).sort((a, b) => b[1] - a[1])[0][0]
   return { language, issues }
+}
+
+/** The writer's languages other than `language`, one variant each, ready to check spelling in. */
+function others(language, detected, { englishVariant, languages }) {
+  const byBase = new Map()
+  for (const code of [...detected, ...languages]) {
+    const b = base(code)
+    if (b !== base(language) && !byBase.has(b)) {
+      byBase.set(b, b === 'en' ? englishVariant : code.includes('-') ? code : VARIANTS[b] ?? code)
+    }
+  }
+  return [...byBase.values()]
 }
 
 // ---------------------------------------------------------------- tone

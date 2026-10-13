@@ -98,7 +98,9 @@ const direct = {
   name: 'direct',
   async call(route, body, s) {
     if (route === 'check') {
-      return { ok: true, data: await reaching(() => core.check(body.text, { languagetoolUrl: s.languagetoolUrl })) }
+      // The browser's accepted languages are the writer's: mixed text is checked in them.
+      const languages = await chrome.i18n.getAcceptLanguages()
+      return { ok: true, data: await reaching(() => core.check(body.text, { languagetoolUrl: s.languagetoolUrl, languages })) }
     }
     if (route === 'improve') {
       return {

@@ -23,6 +23,8 @@ const DEFAULTS = {
   ollamaModel: 'qwen2.5:7b',
   layaUrl: 'http://127.0.0.1:8000',
   layaKey: '',
+  // Primary first. Empty: the browser's accepted languages.
+  languages: [],
 }
 
 const ROUTES = new Set(['check', 'tone', 'improve', 'rewrite'])
@@ -98,9 +100,7 @@ const direct = {
   name: 'direct',
   async call(route, body, s) {
     if (route === 'check') {
-      // The browser's accepted languages are the writer's: mixed text is checked in them.
-      const languages = await chrome.i18n.getAcceptLanguages()
-      return { ok: true, data: await reaching(() => core.check(body.text, { languagetoolUrl: s.languagetoolUrl, languages })) }
+      return { ok: true, data: await reaching(() => core.check(body.text, { languagetoolUrl: s.languagetoolUrl, languages: body.languages })) }
     }
     if (route === 'improve') {
       return {
@@ -173,6 +173,10 @@ async function write(route, body) {
     return { ok: false, error: `bad request for ${route}` }
   }
   const s = await settings()
+  if (route === 'check') {
+    // Both backends get the writer's languages: the text is only checked in them.
+    body = { ...body, languages: s.languages.length ? s.languages : await chrome.i18n.getAcceptLanguages() }
+  }
   const pinned = { 'my-agent': myAgent, 'direct': direct }[s.backend]
   if (pinned) {
     return run(pinned, route, body, s).catch(() => unreachable(pinned, route, s))

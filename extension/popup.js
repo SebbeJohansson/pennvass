@@ -10,6 +10,64 @@ const DEFAULTS = {
   ollamaModel: 'qwen2.5:7b',
   layaUrl: 'http://127.0.0.1:8000',
   layaKey: '',
+  languages: [],
+}
+
+/** Languages LanguageTool spells in, as the variant it needs for a dictionary. */
+const LANGUAGES = {
+  'en-US': 'English (US)', 'en-GB': 'English (UK)', 'sv': 'Swedish', 'da-DK': 'Danish', 'de-DE': 'German',
+  'nl-NL': 'Dutch', 'fr': 'French', 'es': 'Spanish', 'it': 'Italian', 'pt-PT': 'Portuguese', 'pl-PL': 'Polish',
+}
+
+const base = code => code.split('-')[0].toLowerCase()
+
+/** A browser language ("sv-SE", "en") as one of LANGUAGES, or undefined. */
+function known(code) {
+  return code in LANGUAGES ? code : Object.keys(LANGUAGES).find(k => base(k) === base(code))
+}
+
+/** The languages picker: one primary, any others; the same base twice (US and UK English) is one choice. */
+async function showLanguages(stored) {
+  const chosen = stored.languages.length ? stored.languages : (await chrome.i18n.getAcceptLanguages()).map(known)
+    .filter((code, i, all) => code && all.findIndex(c => c && base(c) === base(code)) === i)
+  const primary = document.getElementById('primary')
+  const list = document.getElementById('otherLanguages')
+  for (const [code, name] of Object.entries(LANGUAGES)) {
+    primary.append(new Option(name, code))
+  }
+  primary.value = chosen[0] ?? 'en-US'
+
+  const draw = (others) => {
+    list.replaceChildren()
+    for (const [code, name] of Object.entries(LANGUAGES)) {
+      if (base(code) === base(primary.value)) {
+        continue
+      }
+      const label = document.createElement('label')
+      const box = document.createElement('input')
+      box.type = 'checkbox'
+      box.value = code
+      box.checked = others.includes(code)
+      box.addEventListener('change', () => {
+        if (box.checked) {
+          for (const other of list.querySelectorAll('input:checked')) {
+            other.checked = other === box || base(other.value) !== base(code)
+          }
+        }
+        save()
+      })
+      label.append(box, name)
+      list.append(label)
+    }
+  }
+  const save = () => chrome.storage.local.set({
+    languages: [primary.value, ...[...list.querySelectorAll('input:checked')].map(box => box.value)],
+  })
+  primary.addEventListener('change', () => {
+    draw([...list.querySelectorAll('input:checked')].map(box => box.value))
+    save()
+  })
+  draw(chosen.slice(1))
 }
 
 /** background.js only ever calls a loopback address; refuse anything else here rather than fail quietly there. */
@@ -54,6 +112,8 @@ async function main() {
     await chrome.storage.local.set({ backend: backend.value })
     showStatus()
   })
+
+  await showLanguages(stored)
 
   const note = document.getElementById('note')
   for (const input of document.querySelectorAll('[data-url]')) {

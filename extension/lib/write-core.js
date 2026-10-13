@@ -46,7 +46,8 @@ export function readLanguageTool(body) {
     issues.push({
       offset: match.offset,
       length: match.length,
-      message: match.message,
+      // LanguageTool writes its message in the text's language; the card is English.
+      message: kindOf(match) === 'spelling' ? 'Possible spelling mistake' : match.message,
       // A long list is noise in a card; LanguageTool puts the likeliest first.
       replacements: (match.replacements ?? []).map(r => r.value ?? '').filter(Boolean).slice(0, 5),
       kind: kindOf(match),
@@ -54,7 +55,8 @@ export function readLanguageTool(body) {
       ...(match.rule?.id ? { rule: match.rule.id } : {}),
     })
   }
-  return { language: body?.language?.detectedLanguage?.code ?? body?.language?.code ?? 'auto', issues }
+  // The language it checked in; with auto that is the detected one.
+  return { language: body?.language?.code ?? body?.language?.detectedLanguage?.code ?? 'auto', issues }
 }
 
 /** Below this many letters a line says too little for LanguageTool to tell its language. */
@@ -128,21 +130,37 @@ async function acceptOtherLanguages(text, result, others, deps) {
  * after when they open the text. Consecutive lines in one language are then
  * checked together, so a sentence wrapped over two lines stays one sentence.
  *
- * `languages` are the writer's languages (the browser's accepted ones):
- * they steer detection, and a word spelled right in one of them is no
- * misspelling in another.
+ * `languages` are the writer's languages, primary first: a line is only ever
+ * checked in one of them (one detected as anything else is checked in the
+ * primary), a text too short to tell is checked in the primary, and a word
+ * spelled right in one of them is no misspelling in another.
  */
-export async function check(text, { languagetoolUrl, englishVariant = 'en-US', languages = [] }) {
+export async function check(text, { languagetoolUrl, englishVariant, languages = [] }) {
+  englishVariant ??= languages.find(code => base(code) === 'en') ?? 'en-US'
   const deps = { languagetoolUrl, englishVariant, languages }
+  const mine = new Map()
+  for (const code of languages) {
+    if (!mine.has(base(code))) {
+      mine.set(base(code), base(code) === 'en' ? englishVariant : code)
+    }
+  }
+  const primary = languages.length ? mine.values().next().value : 'auto'
   const parts = lines(text)
   const long = parts.filter(p => p.letters >= MIN_DETECT_LETTERS)
-  await eachLimited(long, async p => { p.result = await checkOne(p.text, 'auto', deps) })
+  await eachLimited(long, async p => {
+    p.result = await checkOne(p.text, 'auto', deps)
+    p.language = mine.size ? mine.get(base(p.result.language)) : p.result.language
+    if (!p.language) {
+      p.language = primary
+      p.result = null
+    }
+  })
   if (!long.length) {
-    const result = await checkOne(text, 'auto', deps)
+    const result = await checkOne(text, primary, deps)
     return acceptOtherLanguages(text, result, others(result.language, [], deps), deps)
   }
   for (const p of parts) {
-    p.language = (p.result ?? long.findLast(q => q.offset < p.offset)?.result ?? long[0].result).language
+    p.language ??= (long.findLast(q => q.offset < p.offset) ?? long[0]).language
   }
 
   const runs = []
@@ -156,7 +174,7 @@ export async function check(text, { languagetoolUrl, englishVariant = 'en-US', l
       runs.push({ language: p.language, offset: p.offset, end: p.end, lines: [p] })
     }
   }
-  const detected = long.map(p => p.result.language)
+  const detected = long.map(p => p.language)
   await eachLimited(runs, async run => {
     const runText = text.slice(run.offset, run.end)
     const result = run.lines.length === 1 && run.lines[0].result
@@ -169,7 +187,7 @@ export async function check(text, { languagetoolUrl, englishVariant = 'en-US', l
   // The language of most of the text, for whoever wants one.
   const letters = {}
   for (const p of long) {
-    letters[p.result.language] = (letters[p.result.language] ?? 0) + p.letters
+    letters[p.language] = (letters[p.language] ?? 0) + p.letters
   }
   const language = Object.entries(letters).sort((a, b) => b[1] - a[1])[0][0]
   return { language, issues }

@@ -24,6 +24,7 @@ export interface LanguageToolMatch {
 export function kindOf(match: LanguageToolMatch): Issue['kind']
 export function readLanguageTool(body: unknown): { language: string, issues: Issue[] }
 export function lines(text: string): { text: string, offset: number, end: number, letters: number }[]
+// `languages`: the writer's, primary first. Text is only checked in them.
 export function check(text: string, deps: { languagetoolUrl: string, englishVariant?: string, languages?: string[] }): Promise<{ language: string, issues: Issue[] }>
 
 export const TONES: Record<'formal' | 'friendly' | 'casual' | 'confident' | 'frustrated', string>

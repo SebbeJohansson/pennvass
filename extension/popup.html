@@ -21,6 +21,10 @@
   summary { cursor: pointer; color: var(--muted); }
   .field { display: block; margin-top: 8px; }
   .field input { width: 100%; margin-top: 3px; }
+  .field select { width: 100%; margin-top: 3px; }
+  .langs { display: grid; grid-template-columns: 1fr 1fr; margin-top: 3px; }
+  .langs label { justify-content: flex-start; gap: 6px; padding: 2px 0; border: 0; }
+  details + details { margin-top: 8px; }
   .note { color: var(--bad); font-size: 12px; min-height: 1em; margin-top: 6px; }
 </style>
 </head>
@@ -33,6 +37,12 @@
   <label><span>Clarity<small>Clearer sentences from a local LLM, 2–8 s each</small></span><input type="checkbox" id="improve"></label>
   <label><span>Tone<small>Laya reads the tone of the whole text</small></span><input type="checkbox" id="tone"></label>
   <label><span>Only check what I type<small>Skips lines that were already in the field or that the site added, like a saved draft. Edit a line and it is checked again.</small></span><input type="checkbox" id="ownText"></label>
+  <details>
+    <summary>Languages</summary>
+    <small>Text is only checked in these. Short text is checked in the primary language.</small>
+    <span class="field">Primary<select id="primary"></select></span>
+    <span class="field">Also write in<span class="langs" id="otherLanguages"></span></span>
+  </details>
   <details>
     <summary>Addresses and keys</summary>
     <span class="field">my-agent<input type="text" data-url="baseUrl" spellcheck="false"></span>

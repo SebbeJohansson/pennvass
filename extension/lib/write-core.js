@@ -57,17 +57,64 @@ export function readLanguageTool(body) {
   return { language: body?.language?.detectedLanguage?.code ?? body?.language?.code ?? 'auto', issues }
 }
 
-export async function check(text, { languagetoolUrl, englishVariant = 'en-US' }) {
+/** Below this many letters a paragraph says too little for LanguageTool to tell its language. */
+const MIN_DETECT_LETTERS = 25
+
+/**
+ * Paragraphs (split at blank lines) with their offsets. A Swedish email
+ * with an English signature and disclaimer is one text in two languages,
+ * and one auto-detected language for all of it marks every Swedish word.
+ */
+export function paragraphs(text) {
+  const found = []
+  const re = /\S[\s\S]*?(?=\n[ \t]*\n|\s*$)/g
+  for (let m; (m = re.exec(text));) {
+    found.push({ text: m[0], offset: m.index, letters: (m[0].match(/\p{L}/gu) ?? []).length })
+  }
+  return found
+}
+
+async function checkOne(text, language, { languagetoolUrl, englishVariant }) {
   const response = await fetch(`${languagetoolUrl}/v2/check`, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ text, language: 'auto', preferredVariants: englishVariant }),
+    body: new URLSearchParams(language === 'auto' ? { text, language, preferredVariants: englishVariant } : { text, language }),
     signal: AbortSignal.timeout(15_000),
   })
   if (!response.ok) {
     throw new Error(`languagetool answered ${response.status}: ${(await response.text()).slice(0, 200)}`)
   }
   return readLanguageTool(await response.json())
+}
+
+/**
+ * Each paragraph long enough to tell is checked in its own detected language.
+ * Short ones ("Med vänlig hälsning", "AI Engineer") take the language of the
+ * paragraph before them, or after when they open the text.
+ */
+export async function check(text, { languagetoolUrl, englishVariant = 'en-US' }) {
+  const deps = { languagetoolUrl, englishVariant }
+  const parts = paragraphs(text)
+  if (parts.length <= 1) {
+    return checkOne(text, 'auto', deps)
+  }
+  const long = parts.filter(p => p.letters >= MIN_DETECT_LETTERS)
+  if (!long.length) {
+    return checkOne(text, 'auto', deps)
+  }
+  await Promise.all(long.map(async p => { p.result = await checkOne(p.text, 'auto', deps) }))
+  await Promise.all(parts.filter(p => !p.result).map(async p => {
+    const before = long.findLast(q => q.offset < p.offset) ?? long[0]
+    p.result = await checkOne(p.text, before.result.language, deps)
+  }))
+  const issues = parts.flatMap(p => p.result.issues.map(issue => ({ ...issue, offset: issue.offset + p.offset })))
+  // The language of most of the text, for whoever wants one.
+  const letters = {}
+  for (const p of long) {
+    letters[p.result.language] = (letters[p.result.language] ?? 0) + p.letters
+  }
+  const language = Object.entries(letters).sort((a, b) => b[1] - a[1])[0][0]
+  return { language, issues }
 }
 
 // ---------------------------------------------------------------- tone

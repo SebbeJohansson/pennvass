@@ -23,6 +23,7 @@ export interface LanguageToolMatch {
 
 export function kindOf(match: LanguageToolMatch): Issue['kind']
 export function readLanguageTool(body: unknown): { language: string, issues: Issue[] }
+export function paragraphs(text: string): { text: string, offset: number, letters: number }[]
 export function check(text: string, deps: { languagetoolUrl: string, englishVariant?: string }): Promise<{ language: string, issues: Issue[] }>
 
 export const TONES: Record<'formal' | 'friendly' | 'casual' | 'confident' | 'frustrated', string>

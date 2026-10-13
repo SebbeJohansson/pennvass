@@ -218,6 +218,9 @@
     if (el.closest(CODE_EDITORS)) {
       return 'code editor'
     }
+    if (el instanceof HTMLInputElement && isCredential(el)) {
+      return 'login or form data field'
+    }
     // spellcheck="false" usually means code. But Grammarly sets it on every
     // field it takes over, before or after we see it, so with Grammarly on the
     // page it says nothing; and a field taken once stays ours.
@@ -225,6 +228,20 @@
       return 'spellcheck="false"'
     }
     return ''
+  }
+
+  /**
+   * Single-line fields for usernames, emails, codes and other form data are
+   * never prose, and password managers like 1Password put their button at the
+   * end of exactly these, where our badge goes. An autocomplete token (other
+   * than on/off) marks structured data; without one, the name or id tells.
+   */
+  function isCredential(input) {
+    const autocomplete = (input.getAttribute('autocomplete') || '').trim().toLowerCase()
+    if (autocomplete && autocomplete !== 'on' && autocomplete !== 'off') {
+      return true
+    }
+    return /user|login|e-?mail|account|otp|passcode/i.test(`${input.name} ${input.id}`)
   }
 
   /**

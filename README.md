@@ -39,6 +39,8 @@ no tools, which the extension cannot set up itself.
 - **The badge** (bottom-left of the field) shows the count. Click it for the
   list of suggestions, the tone, and rewrite buttons: clearer, shorter, more
   formal, friendlier, more confident, in English, in Swedish.
+- **In email** only your reply is checked: the signature and the quoted thread
+  (Outlook, Gmail, Thunderbird markup) are left out.
 - **The popup** turns Pennvass off per site, and turns the clarity and tone
   checks on or off.
 - **Next to Grammarly** both can run: Pennvass's underlines sit a few pixels lower.

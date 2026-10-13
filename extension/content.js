@@ -285,15 +285,31 @@
     return field
   }
 
-  /** The field's text, and for contenteditable where each text node starts in it. */
+  // Mail editors hold more than your reply. From the quoted thread on, nothing
+  // is yours, so the text ends there; a signature or quote block in the middle
+  // is left out on its own. Outlook marks the thread with #appendonsend /
+  // #divRplyFwdMsg (newer builds wrap it in the reference container) and the
+  // signature with #Signature; Gmail and Thunderbird use the classes below.
+  const MAIL_THREAD = '#appendonsend, #divRplyFwdMsg, #mail-editor-reference-message-container, .gmail_quote, .moz-cite-prefix, blockquote[type="cite"]'
+  const MAIL_SKIP = '[id="signature" i], #ms-outlook-mobile-signature, .gmail_signature, .moz-signature, blockquote'
+
+  /**
+   * The field's text, and for contenteditable where each text node starts in it.
+   * A mail's signature and quoted thread are not part of it (see MAIL_THREAD):
+   * they are never checked, underlined or rewritten.
+   */
   function readText(field) {
     if (field.isInput) {
       return { text: field.el.value, segments: [] }
     }
     let text = ''
     const segments = []
+    let ended = false
     const walk = (node) => {
       for (const child of node.childNodes) {
+        if (ended) {
+          return
+        }
         if (child.nodeType === Node.TEXT_NODE) {
           segments.push({ node: child, start: text.length })
           text += child.data
@@ -301,6 +317,18 @@
         else if (child.nodeType === Node.ELEMENT_NODE) {
           if (child.tagName === 'BR') {
             text += '\n'
+            continue
+          }
+          if (child.matches(MAIL_THREAD)) {
+            ended = true
+            tellLeftOut(field, 'the quoted thread from', child)
+            return
+          }
+          if (child.matches(MAIL_SKIP)) {
+            tellLeftOut(field, 'a signature or quote', child)
+            if (text && !text.endsWith('\n')) {
+              text += '\n'
+            }
             continue
           }
           const block = BLOCK_TAGS.has(child.tagName)
@@ -316,6 +344,14 @@
     }
     walk(field.el)
     return { text, segments }
+  }
+
+  function tellLeftOut(field, what, el) {
+    field.told ??= new Set()
+    if (!field.told.has(what)) {
+      field.told.add(what)
+      console.debug(`[pennvass] not checking ${what}`, el)
+    }
   }
 
   /** A text offset as a DOM point. Offsets on an inserted newline snap to the next text node. */

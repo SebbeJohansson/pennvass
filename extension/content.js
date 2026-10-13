@@ -724,12 +724,12 @@
       return
     }
     const field = active
-    const box = field.el.getBoundingClientRect()
-    if (!box.width || !box.height) {
+    const box = visibleBox(field.el)
+    if (!box) {
       return
     }
     const shared = grammarlyOnPage()
-    // Underlines scrolled out of the field are not drawn.
+    // Underlines scrolled out of the field, or out of the editor it scrolls in, are not drawn.
     const clip = { left: box.left, right: box.right, top: box.top, bottom: box.bottom + 2 }
     for (const issue of visibleIssues(field)) {
       for (const rect of issueRects(field, issue)) {
@@ -750,6 +750,107 @@
     drawBadge(field, box, shared)
   }
 
+  /**
+   * The part of `el` that is on screen. A mail editor is often taller than
+   * the pane it scrolls in, and its bottom is then far below the window.
+   */
+  function visibleBox(el) {
+    const own = el.getBoundingClientRect()
+    if (!own.width || !own.height) {
+      return null
+    }
+    let { left, top, right, bottom } = own
+    // Inside the scrollbars, of the field itself and of every box it scrolls in.
+    for (let box = el; box && box !== document.documentElement; box = box.parentElement) {
+      const { overflowX, overflowY } = getComputedStyle(box)
+      if (box !== el && overflowX === 'visible' && overflowY === 'visible') {
+        continue
+      }
+      const r = box.getBoundingClientRect()
+      // An inline element has no client box; its border box will do.
+      const inline = !box.clientWidth && !box.clientHeight
+      left = Math.max(left, r.left + box.clientLeft)
+      top = Math.max(top, r.top + box.clientTop)
+      right = Math.min(right, inline ? r.right : r.left + box.clientLeft + box.clientWidth)
+      bottom = Math.min(bottom, inline ? r.bottom : r.top + box.clientTop + box.clientHeight)
+    }
+    left = Math.max(left, 0)
+    top = Math.max(top, 0)
+    right = Math.min(right, innerWidth)
+    bottom = Math.min(bottom, innerHeight)
+    return right > left && bottom > top ? { left, top, right, bottom, height: bottom - top, fieldHeight: own.height } : null
+  }
+
+  /** Where the caret is drawn in the field, or null when it is not in it. */
+  function caretRect(field) {
+    if (field.isInput) {
+      if (document.activeElement !== field.el && field.el.getRootNode().activeElement !== field.el) {
+        return null
+      }
+      return mirrorRects(field, field.el.selectionEnd, field.el.selectionEnd)[0] ?? null
+    }
+    const selection = getSelection()
+    if (!selection.rangeCount || !field.el.contains(selection.focusNode)) {
+      return null
+    }
+    const range = document.createRange()
+    range.setStart(selection.focusNode, selection.focusOffset)
+    const rect = range.getClientRects()[0]
+    if (rect && rect.height) {
+      return rect
+    }
+    // A caret on an empty line has no rects of its own; its line element has.
+    const node = selection.focusNode
+    const line = node.nodeType === Node.ELEMENT_NODE ? node.childNodes[selection.focusOffset] ?? node : node.parentElement
+    const box = (line instanceof Element ? line : node.parentElement)?.getBoundingClientRect()
+    return box?.height ? box : null
+  }
+
+  /**
+   * Where the caret's line starts: the left edge of the field's top-level
+   * block that holds it (a list's edge, not its bullet's text), or the
+   * field's content edge. Mail editors often leave a margin left of it.
+   */
+  function lineStart(field) {
+    const el = field.el
+    const selection = getSelection()
+    let node = field.isInput ? null : selection.focusNode
+    if (node === el) {
+      // A caret between the field's own children, as on an empty line.
+      node = el.childNodes[selection.focusOffset] ?? el.lastChild
+    }
+    while (node && node.parentNode !== el) {
+      node = node.parentNode
+    }
+    if (node instanceof Element) {
+      return node.getBoundingClientRect().left
+    }
+    return el.getBoundingClientRect().left + el.clientLeft + parseFloat(getComputedStyle(el).paddingLeft)
+  }
+
+  /**
+   * The left edge of the margin left of the text, or null when there is none:
+   * the nearest box around the field that reaches at least `room` px further
+   * left. Mail editors sit in a padded pane like this. A box more than 120 px
+   * further left is the page around the editor, not its margin.
+   */
+  function marginLeft(field, start, room) {
+    let box = field.el
+    for (let depth = 0; box && box !== document.body && depth < 8; depth++, box = box.parentElement) {
+      const left = Math.max(0, box.getBoundingClientRect().left + box.clientLeft)
+      if (start - left > 120) {
+        return null
+      }
+      if (start - left >= room) {
+        return left
+      }
+    }
+    return null
+  }
+
+  /** Above this height the bottom corner is too far from what you type; the badge follows the caret's line. */
+  const TALL_FIELD = 240
+
   function drawBadge(field, box, shared) {
     let badge = uiLayer.querySelector('.badge')
     if (!badge) {
@@ -764,18 +865,28 @@
     badge.textContent = field.offline ? '!' : busy && !count ? '…' : count ? String(count) : '✓'
     badge.title = field.offline ? `Pennvass: ${field.error}` : `Pennvass: ${count} suggestion${count === 1 ? '' : 's'}`
     const size = badge.getBoundingClientRect()
-    const right = Math.min(box.right, innerWidth)
-    const bottom = Math.min(box.bottom, innerHeight)
-    if (box.height < 60) {
+    const caret = box.fieldHeight > TALL_FIELD ? caretRect(field) : null
+    if (box.fieldHeight < 60) {
       // A single-line field: bottom-left would sit on its first word, so the
       // badge goes at the end of the line, left of Grammarly's pill if it is there.
-      badge.style.left = `${right - size.width - (shared ? 74 : 6)}px`
-      badge.style.top = `${(box.top + bottom) / 2 - size.height / 2}px`
+      badge.style.left = `${box.right - size.width - (shared ? 74 : 6)}px`
+      badge.style.top = `${(box.top + box.bottom) / 2 - size.height / 2}px`
+    }
+    else if (caret) {
+      // A tall field: just below the line you are typing on, in the margin
+      // left of the text when there is one (the line itself is left alone:
+      // Outlook puts its own icon there), else at the field's left edge.
+      const top = Math.max(box.top + 4, Math.min(caret.bottom + 4, box.bottom - size.height - 4))
+      // Where the text starts: a list's edge, not its bullet's text; the caret, if it is further left.
+      const start = Math.min(lineStart(field), caret.left)
+      const edge = marginLeft(field, start, size.width + 8)
+      badge.style.left = `${edge === null ? box.left + 8 : (edge + start) / 2 - size.width / 2}px`
+      badge.style.top = `${top}px`
     }
     else {
       // Bottom-left corner: clear of Grammarly's pill and of the resize handle.
-      badge.style.left = `${Math.max(box.left, 0) + 8}px`
-      badge.style.top = `${bottom - size.height - 8}px`
+      badge.style.left = `${box.left + 8}px`
+      badge.style.top = `${box.bottom - size.height - 8}px`
     }
   }
 
@@ -1110,6 +1221,8 @@
   }, true)
 
   addEventListener('scroll', render, true)
+  // In a tall field the badge follows the caret.
+  document.addEventListener('selectionchange', () => active && render())
   addEventListener('resize', render)
   new ResizeObserver(render).observe(document.documentElement)
 })()

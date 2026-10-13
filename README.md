@@ -36,7 +36,8 @@ no tools, which the extension cannot set up itself.
 - **Click an underline** for a card with the fix. A sentence rewrite shows a
   word-by-word diff before you apply it. Fixes are typed in with
   `execCommand('insertText')`, so the site sees normal input and Ctrl+Z undoes them.
-- **The badge** (bottom-left of the field) shows the count. Click it for the
+- **The badge** (bottom-left of the field; in a tall field, at the left edge
+  just below the line you are typing on) shows the count. Click it for the
   list of suggestions, the tone, and rewrite buttons: clearer, shorter, more
   formal, friendlier, more confident, in English, in Swedish.
 - **In email** only your reply is checked: the signature and the quoted thread
